@@ -118,10 +118,53 @@ python -m bp_screener.ingest data\inbox --limit 10 --no-llm
 - OneDrive：把 `BP_INBOX_DIR` 指向同步目录。
 - OSS/COS：在导入前加一个下载脚本，或扩展导入层直接读取对象列表。
 
+## Cloudflare 网页部署
+
+仓库里已经加入 Cloudflare 版本的网页层：
+
+- `web/`：用于 Cloudflare Pages 的静态前端
+- `web/functions/api/`：Pages Functions API
+- `cloudflare/schema.sql`：D1 数据表结构
+- `scripts/sync_to_d1.py`：把本地 SQLite 结果导出成 D1 可导入 SQL
+- `wrangler.toml`：Pages + D1 绑定配置模板
+
+创建 D1 数据库：
+
+```powershell
+npx wrangler d1 create bp-screener
+```
+
+把返回的 `database_id` 填到 `wrangler.toml`，然后初始化数据库：
+
+```powershell
+npx wrangler d1 execute bp-screener --remote --file cloudflare/schema.sql
+```
+
+本地导入 BP 并生成 `data/bp_screener.sqlite` 后，导出 D1 数据：
+
+```powershell
+python scripts\sync_to_d1.py
+npx wrangler d1 execute bp-screener --remote --file data\d1_seed.sql
+```
+
+部署 Pages 网站：
+
+```powershell
+npx wrangler pages deploy web --project-name bp-screener
+```
+
+你需要准备：
+
+- Cloudflare 账号
+- 通过 `npx wrangler login` 登录
+- 一个 D1 database ID，并填入 `wrangler.toml`
+- 可选：在 Cloudflare Pages 里配置自定义域名
+
 ## 当前限制
 
 - 暂未接入 OCR，扫描版 PDF 可能无法提取到有效文本。
 - 当前检索基于 SQLite FTS 关键词搜索，后续可以增加向量语义检索。
+- Cloudflare 网页端当前使用 D1 `LIKE` 做简单搜索；公开数据量变大后，可以升级为 D1 FTS 或专门的搜索服务。
 - 抽取质量取决于 Cherry Studio 中配置的模型能力和上下文长度。
 - 如果要处理一万份 BP，建议使用命令行分批导入，不要一次性在网页里处理全部文件。
 

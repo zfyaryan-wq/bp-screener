@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 data/*.sqlite
 data/*.sqlite-*
+data/d1_seed.sql
 data/inbox/*
 data/processed/*
 data/index/*

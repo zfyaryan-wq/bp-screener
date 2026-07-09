@@ -118,10 +118,53 @@ Recommended options:
 - OneDrive: point `BP_INBOX_DIR` to the synced folder.
 - OSS/COS: add a small downloader before `ingest.py`, or extend the ingestion layer to read object listings directly.
 
+## Cloudflare Web Deployment
+
+This repository includes a Cloudflare-ready web layer:
+
+- `web/`: static frontend for Cloudflare Pages
+- `web/functions/api/`: Pages Functions API
+- `cloudflare/schema.sql`: D1 schema
+- `scripts/sync_to_d1.py`: export local SQLite results into D1 import SQL
+- `wrangler.toml`: Pages + D1 binding template
+
+Create a D1 database:
+
+```powershell
+npx wrangler d1 create bp-screener
+```
+
+Copy the returned `database_id` into `wrangler.toml`, then initialize the database:
+
+```powershell
+npx wrangler d1 execute bp-screener --remote --file cloudflare/schema.sql
+```
+
+After local ingestion has produced `data/bp_screener.sqlite`, export data for D1:
+
+```powershell
+python scripts\sync_to_d1.py
+npx wrangler d1 execute bp-screener --remote --file data\d1_seed.sql
+```
+
+Deploy the Pages site:
+
+```powershell
+npx wrangler pages deploy web --project-name bp-screener
+```
+
+You need to provide:
+
+- A Cloudflare account
+- Wrangler login via `npx wrangler login`
+- A D1 database ID for `wrangler.toml`
+- Optional custom domain configuration in Cloudflare Pages
+
 ## Current Limitations
 
 - OCR is not wired in yet, so scanned PDFs may produce little or no text.
 - Search is currently keyword-based with SQLite FTS; vector search can be added later.
+- Cloudflare search currently uses simple D1 `LIKE` queries; for large public datasets, add D1 FTS or a dedicated search service later.
 - LLM quality depends on the model configured in Cherry Studio and its context length.
 - For 10,000 decks, use CLI batch ingestion instead of processing everything through the web UI at once.
 
