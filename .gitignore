@@ -1,0 +1,12 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+data/*.sqlite
+data/*.sqlite-*
+data/inbox/*
+data/processed/*
+data/index/*
+!data/inbox/.gitkeep
+!data/processed/.gitkeep
+!data/index/.gitkeep
