@@ -1,5 +1,8 @@
 .env
+.dev.vars
 .venv/
+.wrangler/
+.tools/
 __pycache__/
 *.pyc
 data/*.sqlite
@@ -11,3 +14,11 @@ data/index/*
 !data/inbox/.gitkeep
 !data/processed/.gitkeep
 !data/index/.gitkeep
+public_url.txt
+tunnel.log
+tunnel.err.log
+wake_agent.log
+heartbeat.log
+wake_probe.log
+wake_probe.err.log
+static/bp_previews/

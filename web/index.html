@@ -7,6 +7,16 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
+    <div id="loginOverlay" class="loginOverlay">
+      <form id="loginForm" class="loginCard">
+        <h2 data-i18n="loginTitle">Enter password</h2>
+        <p data-i18n="loginHint">Use the shared access password to view project data.</p>
+        <input id="passwordInput" type="password" autocomplete="current-password" placeholder="123456" />
+        <button type="submit" data-i18n="loginButton">Enter</button>
+        <p id="loginError" class="loginError"></p>
+      </form>
+    </div>
+
     <header class="hero">
       <nav class="nav">
         <strong>BP Screener</strong>
@@ -64,6 +74,13 @@
           <span id="aiCount">0</span>
           <small data-i18n="aiProjects">AI-related</small>
         </div>
+      </section>
+
+      <section class="panel charts">
+        <div class="sectionTitle">
+          <h2 data-i18n="charts">Project Overview</h2>
+        </div>
+        <div id="chartGrid" class="chartGrid"></div>
       </section>
 
       <section id="projectGrid" class="grid"></section>

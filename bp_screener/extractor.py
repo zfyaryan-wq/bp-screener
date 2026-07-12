@@ -3,33 +3,42 @@ from __future__ import annotations
 import json
 import re
 
-from openai import OpenAI
 from pydantic import ValidationError
 
-from .config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
+from .config import LLM_MAX_TOKENS
+from .llm_client import chat_completion
 from .models import ProjectProfile
+from .llm_json import loads_llm_json
 
 
-SYSTEM_PROMPT = """你是一个早期项目 BP 筛选助手。
-请只基于给定 BP 文本抽取信息，不要编造。未知字段填“未知”或空数组。
-所有重要判断都尽量给 evidence，quote 必须来自原文，page 如果能从 [第x页] 判断就填写页码。
-recommendation 只能是 高 / 中 / 低 / 未知。
-输出必须是合法 JSON，不要 Markdown。"""
+SYSTEM_PROMPT = """You are a BP screening assistant for a four-person student deal-review team.
+Extract only what is supported by the provided BP text. Do not invent facts.
+Return all structured profile fields in concise professional English, even if the deck is written in Chinese.
+Keep evidence.quote in the original source language because it must be a verbatim quote from the deck.
+Use "Unknown" for unknown string fields and [] for unknown list fields.
+recommendation must be one of: 高 / 中 / 低 / 未知.
+The output must be valid JSON only. Do not return Markdown."""
 
 
-USER_PROMPT = """请把下面 BP 文本抽取成 JSON，字段如下：
+USER_PROMPT = """Extract the BP text below into JSON with these fields:
 project_name, company_name, industry, ai_related, ai_category, financing_stage,
 business_model, team_highlights, traction, customers_or_users, revenue_or_financials,
 one_line_summary, recommendation, risks, tags, evidence。
 
-筛选关注点：
-1. 项目属于什么领域。
-2. 是否与 AI 相关，以及 AI 类型。
-3. 团队是否有名校、大厂、科研、连续创业、行业资源等亮点。
-4. 当前进展，包括产品阶段、客户、收入、用户、融资阶段。
-5. 商业模式和主要风险。
+Screening focus:
+1. What industry or sector the project belongs to.
+2. Whether it is AI-related, and what type of AI is involved.
+3. Whether the team has credible signals such as top universities, big tech, research background, serial entrepreneurship, or industry resources.
+4. Current traction, including product stage, customers, revenue, users, and financing stage.
+5. Business model, main risks, and whether the project is worth follow-up for a small student review group.
 
-BP 文本：
+Language rule:
+- Structured profile fields should be in English.
+- evidence.quote must stay verbatim from the BP source text.
+- evidence.field should be in English.
+- recommendation must still use 高 / 中 / 低 / 未知 for compatibility.
+
+BP text:
 {text}
 """
 
@@ -38,24 +47,24 @@ def extract_profile(text: str, use_llm: bool = True) -> ProjectProfile:
     if use_llm:
         try:
             return extract_with_llm(text)
-        except Exception:
+        except Exception as exc:
+            print(f"[LLM fallback] {type(exc).__name__}: {exc}")
             return heuristic_profile(text)
     return heuristic_profile(text)
 
 
 def extract_with_llm(text: str) -> ProjectProfile:
-    client = OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY)
-    response = client.chat.completions.create(
-        model=LLM_MODEL,
+    response = chat_completion(
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": USER_PROMPT.format(text=text)},
         ],
         temperature=0.1,
+        max_tokens=LLM_MAX_TOKENS,
         response_format={"type": "json_object"},
     )
     content = response.choices[0].message.content or "{}"
-    data = json.loads(content)
+    data = loads_llm_json(content)
     try:
         return ProjectProfile.model_validate(data)
     except ValidationError:
@@ -65,12 +74,92 @@ def extract_with_llm(text: str) -> ProjectProfile:
 def normalize_llm_payload(data: dict) -> dict:
     defaults = ProjectProfile().model_dump()
     defaults.update(data)
+
+    string_fields = [
+        "project_name",
+        "company_name",
+        "industry",
+        "financing_stage",
+        "business_model",
+        "customers_or_users",
+        "revenue_or_financials",
+        "one_line_summary",
+    ]
+    for key in string_fields:
+        defaults[key] = normalize_string(defaults.get(key), default="Unknown")
+
+    defaults["ai_related"] = normalize_bool(defaults.get("ai_related"))
+    defaults["recommendation"] = normalize_string(defaults.get("recommendation"), default="未知")
+
     for key in ["ai_category", "team_highlights", "traction", "risks", "tags", "evidence"]:
-        if isinstance(defaults[key], str):
-            defaults[key] = [defaults[key]] if defaults[key] and defaults[key] != "未知" else []
+        defaults[key] = normalize_list(defaults.get(key), key=key)
+
     if defaults["recommendation"] not in {"高", "中", "低", "未知"}:
         defaults["recommendation"] = "未知"
     return defaults
+
+
+def normalize_string(value: object, default: str = "未知") -> str:
+    if value is None:
+        return default
+    if isinstance(value, list):
+        items = [str(item).strip() for item in value if str(item).strip()]
+        return "；".join(items) if items else default
+    if isinstance(value, dict):
+        items = [f"{key}: {item}" for key, item in value.items() if str(item).strip()]
+        return "；".join(items) if items else default
+    text = str(value).strip()
+    return text if text else default
+
+
+def normalize_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    text = str(value).strip().lower()
+    return text in {"true", "yes", "y", "1", "是", "相关", "ai", "有"}
+
+
+def normalize_list(value: object, key: str) -> list:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        if key == "evidence":
+            return [normalize_evidence(item, index) for index, item in enumerate(value)]
+        return [str(item).strip() for item in value if str(item).strip() and str(item).strip() != "未知"]
+    if isinstance(value, dict):
+        if key == "evidence":
+            return [
+                normalize_evidence({"field": field, "quote": quote}, index)
+                for index, (field, quote) in enumerate(value.items())
+            ]
+        return [f"{field}: {item}" for field, item in value.items() if str(item).strip()]
+    text = str(value).strip()
+    if not text or text == "未知":
+        return []
+    if key == "evidence":
+        return [normalize_evidence({"field": "unknown", "quote": text}, 0)]
+    return [text]
+
+
+def normalize_evidence(value: object, index: int) -> dict:
+    if isinstance(value, dict):
+        field = str(value.get("field") or value.get("name") or f"evidence_{index + 1}")
+        quote = str(value.get("quote") or value.get("text") or value.get("content") or value)
+        page = extract_page(value.get("page") or quote)
+        return {"field": field, "quote": quote, "page": page}
+    quote = str(value)
+    return {"field": f"evidence_{index + 1}", "quote": quote, "page": extract_page(quote)}
+
+
+def extract_page(value: object) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    match = re.search(r"(?:第|page\s*)(\d+)", str(value), re.IGNORECASE)
+    return int(match.group(1)) if match else None
 
 
 def heuristic_profile(text: str) -> ProjectProfile:

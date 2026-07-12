@@ -1,4 +1,5 @@
 streamlit
+altair
 pandas
 pydantic
 python-dotenv
@@ -6,3 +7,4 @@ openai
 pypdf
 python-pptx
 python-docx
+xlsxwriter

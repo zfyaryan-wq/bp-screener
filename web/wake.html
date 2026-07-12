@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BP Screener Workbench</title>
+    <link rel="stylesheet" href="/wake.css" />
+  </head>
+  <body>
+    <main class="card">
+      <h1>BP Screener</h1>
+
+      <div class="statusBox">
+        <span id="statusDot" class="dot"></span>
+        <span id="statusText">Checking...</span>
+      </div>
+
+      <form id="wakeForm" class="form">
+        <button type="submit">Open</button>
+      </form>
+
+      <p id="message" class="message"></p>
+    </main>
+
+    <script src="/wake.js" type="module"></script>
+  </body>
+</html>

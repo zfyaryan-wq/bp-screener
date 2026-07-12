@@ -28,7 +28,19 @@ def row_insert(table: str, columns: list[str], row: sqlite3.Row) -> str:
     return f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({values});"
 
 
-def export_seed(local_db: Path, schema_path: Path, output_path: Path, max_chunks: int) -> None:
+def object_key(document_id: int, file_name: str) -> str:
+    safe_name = file_name.replace("\\", "_").replace("/", "_").strip()
+    return f"documents/{document_id}/{safe_name}"
+
+
+def export_seed(
+    local_db: Path,
+    schema_path: Path,
+    output_path: Path,
+    max_chunks: int,
+    include_transaction: bool = False,
+    include_file_keys: bool = False,
+) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(local_db)
     conn.row_factory = sqlite3.Row
@@ -60,14 +72,15 @@ def export_seed(local_db: Path, schema_path: Path, output_path: Path, max_chunks
 
     with output_path.open("w", encoding="utf-8") as handle:
         handle.write(schema_path.read_text(encoding="utf-8"))
-        handle.write("\n\nBEGIN TRANSACTION;\n")
+        if include_transaction:
+            handle.write("\n\nBEGIN TRANSACTION;\n")
 
         for row in conn.execute(
             """
             SELECT
               id,
               file_name,
-              NULL AS source_url,
+              file_path,
               file_size,
               created_at,
               updated_at
@@ -76,7 +89,9 @@ def export_seed(local_db: Path, schema_path: Path, output_path: Path, max_chunks
             ORDER BY id
             """
         ):
-            handle.write(row_insert("documents", document_columns, row) + "\n")
+            payload = dict(row)
+            payload["source_url"] = object_key(payload["id"], payload["file_name"]) if include_file_keys else None
+            handle.write(row_insert("documents", document_columns, payload) + "\n")
 
         for row in conn.execute("SELECT * FROM projects ORDER BY id"):
             handle.write(row_insert("projects", project_columns, row) + "\n")
@@ -92,7 +107,8 @@ def export_seed(local_db: Path, schema_path: Path, output_path: Path, max_chunks
         ):
             handle.write(row_insert("chunks", chunk_columns, row) + "\n")
 
-        handle.write("COMMIT;\n")
+        if include_transaction:
+            handle.write("COMMIT;\n")
 
 
 def execute_seed(database_name: str, output_path: Path) -> None:
@@ -109,11 +125,20 @@ def main() -> None:
     parser.add_argument("--schema", type=Path, default=DEFAULT_SCHEMA)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--max-chunks", type=int, default=5000)
+    parser.add_argument("--include-transaction", action="store_true")
+    parser.add_argument("--include-file-keys", action="store_true", help="Write deterministic R2 object keys into source_url.")
     parser.add_argument("--execute", action="store_true", help="Run wrangler d1 execute after exporting.")
     parser.add_argument("--database", default="bp-screener", help="Cloudflare D1 database name.")
     args = parser.parse_args()
 
-    export_seed(args.local_db, args.schema, args.output, args.max_chunks)
+    export_seed(
+        args.local_db,
+        args.schema,
+        args.output,
+        args.max_chunks,
+        args.include_transaction,
+        args.include_file_keys,
+    )
     print(f"Exported D1 seed SQL to {args.output}")
 
     if args.execute:

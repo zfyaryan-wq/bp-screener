@@ -5,4 +5,4 @@ pages_build_output_dir = "web"
 [[d1_databases]]
 binding = "DB"
 database_name = "bp-screener"
-database_id = "REPLACE_WITH_CLOUDFLARE_D1_DATABASE_ID"
+database_id = "b9b63d43-e359-4ee5-b4b2-d6b281688cc5"
