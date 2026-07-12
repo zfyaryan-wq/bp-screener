@@ -21,10 +21,16 @@ from bp_screener.db import (
     get_project_review,
     get_project_translation,
     log_activity,
+    personal_review_rows,
+    reviewer_rows,
     restore_document,
     save_committee_review,
+    save_personal_review,
     save_project_review,
     save_project_translation,
+    save_reviewer,
+    save_reviewer_criteria,
+    team_consensus,
 )
 from bp_screener.ingest import ingest_path
 from bp_screener.parsers import SUPPORTED_SUFFIXES
@@ -340,7 +346,7 @@ with st.sidebar:
         st.success(labels["processed"].format(ok=ok, failed=failed))
 
 
-tab_search, tab_library_qa, tab_projects, tab_analytics, tab_detail, tab_status = st.tabs(labels["tabs"])
+tab_search, tab_library_qa, tab_team, tab_projects, tab_analytics, tab_detail, tab_status = st.tabs(labels["tabs"])
 
 with connect() as conn:
     with tab_search:
@@ -431,6 +437,93 @@ with connect() as conn:
                     use_container_width=True,
                     hide_index=True,
                 )
+
+    with tab_team:
+        st.markdown(f"### {labels['team']['title']}")
+        st.caption(labels["team"]["subtitle"])
+        team_rows = reviewer_rows(conn)
+        st.markdown(f"**{labels['team']['reviewers']}**")
+        for reviewer in team_rows:
+            with st.expander(f"{reviewer['name']} · {reviewer.get('role') or labels['empty']}", expanded=False):
+                with st.form(f"reviewer-form-{reviewer['id']}"):
+                    profile_cols = st.columns(2)
+                    reviewer_name = profile_cols[0].text_input(
+                        labels["team"]["name"],
+                        value=reviewer["name"],
+                        key=f"reviewer-name-{reviewer['id']}",
+                    )
+                    reviewer_role = profile_cols[1].text_input(
+                        labels["team"]["role"],
+                        value=reviewer.get("role") or "",
+                        key=f"reviewer-role-{reviewer['id']}",
+                    )
+                    st.markdown(f"**{labels['team']['criteria']}**")
+                    criteria_cols = st.columns(2)
+                    preferred_industries = criteria_cols[0].text_area(
+                        labels["team"]["preferred_industries"],
+                        value=reviewer.get("preferred_industries") or "",
+                        key=f"preferred-industries-{reviewer['id']}",
+                    )
+                    avoided_industries = criteria_cols[1].text_area(
+                        labels["team"]["avoided_industries"],
+                        value=reviewer.get("avoided_industries") or "",
+                        key=f"avoided-industries-{reviewer['id']}",
+                    )
+                    stage_preference = criteria_cols[0].text_input(
+                        labels["team"]["stage_preference"],
+                        value=reviewer.get("stage_preference") or "",
+                        key=f"stage-preference-{reviewer['id']}",
+                    )
+                    ai_preference = criteria_cols[1].text_input(
+                        labels["team"]["ai_preference"],
+                        value=reviewer.get("ai_preference") or "",
+                        key=f"ai-preference-{reviewer['id']}",
+                    )
+                    team_preference = criteria_cols[0].text_area(
+                        labels["team"]["team_preference"],
+                        value=reviewer.get("team_preference") or "",
+                        key=f"team-preference-{reviewer['id']}",
+                    )
+                    traction_preference = criteria_cols[1].text_area(
+                        labels["team"]["traction_preference"],
+                        value=reviewer.get("traction_preference") or "",
+                        key=f"traction-preference-{reviewer['id']}",
+                    )
+                    red_flags = st.text_area(
+                        labels["team"]["red_flags"],
+                        value=reviewer.get("red_flags") or "",
+                        key=f"red-flags-{reviewer['id']}",
+                    )
+                    scoring_rubric = st.text_area(
+                        labels["team"]["scoring_rubric"],
+                        value=reviewer.get("scoring_rubric") or "",
+                        key=f"scoring-rubric-{reviewer['id']}",
+                    )
+                    if st.form_submit_button(labels["team"]["save_criteria"]):
+                        save_reviewer(conn, int(reviewer["id"]), reviewer_name, reviewer_role, active=True)
+                        save_reviewer_criteria(
+                            conn,
+                            int(reviewer["id"]),
+                            {
+                                "preferred_industries": preferred_industries,
+                                "avoided_industries": avoided_industries,
+                                "stage_preference": stage_preference,
+                                "ai_preference": ai_preference,
+                                "team_preference": team_preference,
+                                "traction_preference": traction_preference,
+                                "red_flags": red_flags,
+                                "scoring_rubric": scoring_rubric,
+                            },
+                        )
+                        log_activity(
+                            conn,
+                            st.session_state.get("actor", ""),
+                            "update",
+                            detail=f"Updated reviewer criteria: {reviewer_name}",
+                        )
+                        conn.commit()
+                        st.success(labels["team"]["saved"])
+                        st.rerun()
 
     with tab_projects:
         col1, col2, col3, col4 = st.columns(4)
@@ -528,6 +621,10 @@ with connect() as conn:
         if st.session_state.get("library_open_document_id"):
             render_inline_bp_view(conn, int(st.session_state["library_open_document_id"]), labels, lang)
 
+        consensus_by_document = {
+            int(row["document_id"]): team_consensus(conn, int(row["document_id"]))
+            for row in display_rows
+        }
         table = pd.DataFrame(
             [
                 {
@@ -549,6 +646,12 @@ with connect() as conn:
                     labels["columns"]["committee_score"]: row.get("committee_score") or labels["committee"]["not_run"],
                     labels["columns"]["committee_decision"]: row.get("committee_decision")
                     or labels["committee"]["not_run"],
+                    labels["team"]["team_decision"]: consensus_by_document[int(row["document_id"])]["team_decision"],
+                    labels["team"]["average_score"]: consensus_by_document[int(row["document_id"])]["average_score"],
+                    labels["team"]["reviewed"]: (
+                        f"{consensus_by_document[int(row['document_id'])]['reviewed_count']}/"
+                        f"{consensus_by_document[int(row['document_id'])]['reviewer_count']}"
+                    ),
                     labels["columns"]["file"]: row["file_name"],
                 }
                 for row in display_rows
@@ -817,6 +920,92 @@ with connect() as conn:
 
             st.subheader(display_project["project_name"])
             st.write(display_project["one_line_summary"])
+
+            st.markdown(f"### {labels['team']['personal_reviews']}")
+            consensus = team_consensus(conn, int(document_id))
+            consensus_cols = st.columns(4)
+            consensus_cols[0].metric(
+                labels["team"]["reviewed"],
+                f"{consensus['reviewed_count']}/{consensus['reviewer_count']}",
+            )
+            consensus_cols[1].metric(labels["team"]["average_score"], consensus["average_score"])
+            consensus_cols[2].metric(labels["team"]["interested"], consensus["interested_count"])
+            consensus_cols[3].metric(labels["team"]["team_decision"], consensus["team_decision"])
+
+            for personal_review in personal_review_rows(conn, int(document_id)):
+                reviewer_id = int(personal_review["reviewer_id"])
+                reviewer_title = (
+                    f"{personal_review['reviewer_name']} · "
+                    f"{personal_review.get('decision') or 'To review'} · "
+                    f"{int(personal_review.get('score') or 0)}"
+                )
+                with st.expander(reviewer_title, expanded=False):
+                    with st.form(f"personal-review-{document_id}-{reviewer_id}"):
+                        review_cols = st.columns([1, 1, 2])
+                        decision_options = labels["team"]["decision_options"]
+                        current_decision = personal_review.get("decision") or "To review"
+                        decision_index = (
+                            decision_options.index(current_decision)
+                            if current_decision in decision_options
+                            else 0
+                        )
+                        decision = review_cols[0].selectbox(
+                            labels["team"]["decision"],
+                            decision_options,
+                            index=decision_index,
+                            key=f"decision-{document_id}-{reviewer_id}",
+                        )
+                        score = review_cols[1].number_input(
+                            labels["team"]["score"],
+                            min_value=0,
+                            max_value=100,
+                            value=int(personal_review.get("score") or 0),
+                            step=5,
+                            key=f"score-{document_id}-{reviewer_id}",
+                        )
+                        tags = review_cols[2].text_input(
+                            labels["team"]["tags"],
+                            value=", ".join(personal_review.get("tags") or []),
+                            key=f"tags-{document_id}-{reviewer_id}",
+                        )
+                        rationale = st.text_area(
+                            labels["team"]["rationale"],
+                            value=personal_review.get("rationale") or "",
+                            key=f"rationale-{document_id}-{reviewer_id}",
+                        )
+                        concerns = st.text_area(
+                            labels["team"]["concerns"],
+                            value=personal_review.get("concerns") or "",
+                            key=f"concerns-{document_id}-{reviewer_id}",
+                        )
+                        questions = st.text_area(
+                            labels["team"]["questions"],
+                            value=personal_review.get("questions") or "",
+                            key=f"questions-{document_id}-{reviewer_id}",
+                        )
+                        if st.form_submit_button(labels["team"]["save_review"]):
+                            save_personal_review(
+                                conn,
+                                int(document_id),
+                                reviewer_id,
+                                decision,
+                                int(score),
+                                rationale,
+                                concerns,
+                                questions,
+                                tags,
+                            )
+                            log_activity(
+                                conn,
+                                st.session_state.get("actor", ""),
+                                "update",
+                                int(document_id),
+                                project.get("file_name", ""),
+                                f"Saved personal review by {personal_review['reviewer_name']}: {decision}",
+                            )
+                            conn.commit()
+                            st.success(labels["team"]["review_saved"])
+                            st.rerun()
 
             review = get_project_review(conn, int(document_id))
             with st.form(f"review-form-{document_id}"):

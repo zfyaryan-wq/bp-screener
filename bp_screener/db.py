@@ -76,6 +76,44 @@ CREATE TABLE IF NOT EXISTS project_reviews (
   FOREIGN KEY(document_id) REFERENCES documents(id)
 );
 
+CREATE TABLE IF NOT EXISTS reviewers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  role TEXT NOT NULL DEFAULT '',
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS reviewer_criteria (
+  reviewer_id INTEGER PRIMARY KEY,
+  preferred_industries TEXT NOT NULL DEFAULT '',
+  avoided_industries TEXT NOT NULL DEFAULT '',
+  stage_preference TEXT NOT NULL DEFAULT '',
+  ai_preference TEXT NOT NULL DEFAULT '',
+  team_preference TEXT NOT NULL DEFAULT '',
+  traction_preference TEXT NOT NULL DEFAULT '',
+  red_flags TEXT NOT NULL DEFAULT '',
+  scoring_rubric TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(reviewer_id) REFERENCES reviewers(id)
+);
+
+CREATE TABLE IF NOT EXISTS personal_reviews (
+  document_id INTEGER NOT NULL,
+  reviewer_id INTEGER NOT NULL,
+  decision TEXT NOT NULL DEFAULT 'To review',
+  score INTEGER NOT NULL DEFAULT 0,
+  rationale TEXT NOT NULL DEFAULT '',
+  concerns TEXT NOT NULL DEFAULT '',
+  questions TEXT NOT NULL DEFAULT '',
+  tags TEXT NOT NULL DEFAULT '[]',
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(document_id, reviewer_id),
+  FOREIGN KEY(document_id) REFERENCES documents(id),
+  FOREIGN KEY(reviewer_id) REFERENCES reviewers(id)
+);
+
 CREATE TABLE IF NOT EXISTS committee_reviews (
   document_id INTEGER PRIMARY KEY,
   overall_score INTEGER NOT NULL DEFAULT 0,
@@ -123,6 +161,8 @@ CREATE INDEX IF NOT EXISTS idx_projects_recommendation ON projects(recommendatio
 CREATE INDEX IF NOT EXISTS idx_projects_ai_related ON projects(ai_related);
 CREATE INDEX IF NOT EXISTS idx_chunks_document ON chunks(document_id, chunk_index);
 CREATE INDEX IF NOT EXISTS idx_chunk_embeddings_document ON chunk_embeddings(document_id);
+CREATE INDEX IF NOT EXISTS idx_personal_reviews_document ON personal_reviews(document_id);
+CREATE INDEX IF NOT EXISTS idx_personal_reviews_reviewer ON personal_reviews(reviewer_id);
 CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_logs(created_at DESC);
 """
 
@@ -146,6 +186,24 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_documents_deleted_updated ON documents(deleted_at, updated_at DESC)"
     )
+    ensure_default_reviewers(conn)
+
+
+def ensure_default_reviewers(conn: sqlite3.Connection) -> None:
+    defaults = [
+        ("Reviewer A", "Market / sector fit"),
+        ("Reviewer B", "Team and founder quality"),
+        ("Reviewer C", "Product and AI depth"),
+        ("Reviewer D", "Traction and business model"),
+    ]
+    for name, role in defaults:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO reviewers(name, role)
+            VALUES (?, ?)
+            """,
+            (name, role),
+        )
 
 
 def dumps(value: Any) -> str:
@@ -452,6 +510,196 @@ def save_project_review(
         """,
         (document_id, review_status, owner, note),
     )
+
+
+def reviewer_rows(conn: sqlite3.Connection, active_only: bool = True) -> list[dict[str, Any]]:
+    where = "WHERE r.active = 1" if active_only else ""
+    rows = conn.execute(
+        f"""
+        SELECT
+          r.id,
+          r.name,
+          r.role,
+          r.active,
+          COALESCE(c.preferred_industries, '') AS preferred_industries,
+          COALESCE(c.avoided_industries, '') AS avoided_industries,
+          COALESCE(c.stage_preference, '') AS stage_preference,
+          COALESCE(c.ai_preference, '') AS ai_preference,
+          COALESCE(c.team_preference, '') AS team_preference,
+          COALESCE(c.traction_preference, '') AS traction_preference,
+          COALESCE(c.red_flags, '') AS red_flags,
+          COALESCE(c.scoring_rubric, '') AS scoring_rubric,
+          COALESCE(c.updated_at, r.updated_at) AS updated_at
+        FROM reviewers r
+        LEFT JOIN reviewer_criteria c ON c.reviewer_id = r.id
+        {where}
+        ORDER BY r.id ASC
+        """
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def save_reviewer(
+    conn: sqlite3.Connection,
+    reviewer_id: int,
+    name: str,
+    role: str,
+    active: bool = True,
+) -> None:
+    conn.execute(
+        """
+        UPDATE reviewers
+        SET name = ?,
+            role = ?,
+            active = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (name.strip() or f"Reviewer {reviewer_id}", role.strip(), int(active), reviewer_id),
+    )
+
+
+def save_reviewer_criteria(conn: sqlite3.Connection, reviewer_id: int, criteria: dict[str, Any]) -> None:
+    conn.execute(
+        """
+        INSERT INTO reviewer_criteria(
+          reviewer_id, preferred_industries, avoided_industries, stage_preference,
+          ai_preference, team_preference, traction_preference, red_flags,
+          scoring_rubric, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(reviewer_id) DO UPDATE SET
+          preferred_industries = excluded.preferred_industries,
+          avoided_industries = excluded.avoided_industries,
+          stage_preference = excluded.stage_preference,
+          ai_preference = excluded.ai_preference,
+          team_preference = excluded.team_preference,
+          traction_preference = excluded.traction_preference,
+          red_flags = excluded.red_flags,
+          scoring_rubric = excluded.scoring_rubric,
+          updated_at = CURRENT_TIMESTAMP
+        """,
+        (
+            reviewer_id,
+            str(criteria.get("preferred_industries") or ""),
+            str(criteria.get("avoided_industries") or ""),
+            str(criteria.get("stage_preference") or ""),
+            str(criteria.get("ai_preference") or ""),
+            str(criteria.get("team_preference") or ""),
+            str(criteria.get("traction_preference") or ""),
+            str(criteria.get("red_flags") or ""),
+            str(criteria.get("scoring_rubric") or ""),
+        ),
+    )
+
+
+def personal_review_rows(conn: sqlite3.Connection, document_id: int) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT
+          r.id AS reviewer_id,
+          r.name AS reviewer_name,
+          r.role AS reviewer_role,
+          COALESCE(pr.decision, 'To review') AS decision,
+          COALESCE(pr.score, 0) AS score,
+          COALESCE(pr.rationale, '') AS rationale,
+          COALESCE(pr.concerns, '') AS concerns,
+          COALESCE(pr.questions, '') AS questions,
+          COALESCE(pr.tags, '[]') AS tags,
+          COALESCE(pr.updated_at, '') AS updated_at
+        FROM reviewers r
+        LEFT JOIN personal_reviews pr
+          ON pr.reviewer_id = r.id
+         AND pr.document_id = ?
+        WHERE r.active = 1
+        ORDER BY r.id ASC
+        """,
+        (document_id,),
+    ).fetchall()
+    result = []
+    for row in rows:
+        item = dict(row)
+        item["tags"] = loads(item.get("tags", "[]")) or []
+        item["score"] = int(item.get("score") or 0)
+        result.append(item)
+    return result
+
+
+def save_personal_review(
+    conn: sqlite3.Connection,
+    document_id: int,
+    reviewer_id: int,
+    decision: str,
+    score: int,
+    rationale: str,
+    concerns: str,
+    questions: str,
+    tags: list[str] | str | None = None,
+) -> None:
+    if isinstance(tags, str):
+        tag_values = [tag.strip() for tag in tags.split(",") if tag.strip()]
+    else:
+        tag_values = [str(tag).strip() for tag in (tags or []) if str(tag).strip()]
+    conn.execute(
+        """
+        INSERT INTO personal_reviews(
+          document_id, reviewer_id, decision, score, rationale,
+          concerns, questions, tags, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(document_id, reviewer_id) DO UPDATE SET
+          decision = excluded.decision,
+          score = excluded.score,
+          rationale = excluded.rationale,
+          concerns = excluded.concerns,
+          questions = excluded.questions,
+          tags = excluded.tags,
+          updated_at = CURRENT_TIMESTAMP
+        """,
+        (
+            document_id,
+            reviewer_id,
+            decision,
+            max(0, min(100, int(score or 0))),
+            rationale.strip(),
+            concerns.strip(),
+            questions.strip(),
+            dumps(tag_values),
+        ),
+    )
+
+
+def team_consensus(conn: sqlite3.Connection, document_id: int) -> dict[str, Any]:
+    reviews = personal_review_rows(conn, document_id)
+    completed = [
+        review
+        for review in reviews
+        if review.get("decision") != "To review"
+        or int(review.get("score") or 0) > 0
+        or str(review.get("rationale") or "").strip()
+    ]
+    scores = [int(review["score"]) for review in completed if int(review.get("score") or 0) > 0]
+    avg_score = round(sum(scores) / len(scores), 1) if scores else 0
+    interested_decisions = {"Interested", "Discuss", "Priority"}
+    pass_decisions = {"Pass", "Reject"}
+    interested_count = sum(1 for review in completed if review.get("decision") in interested_decisions)
+    pass_count = sum(1 for review in completed if review.get("decision") in pass_decisions)
+    if not completed:
+        decision = "Not reviewed"
+    elif interested_count >= 2 or avg_score >= 75:
+        decision = "Discuss"
+    elif pass_count >= 3 or avg_score and avg_score < 45:
+        decision = "Pass"
+    else:
+        decision = "Mixed"
+    return {
+        "reviewer_count": len(reviews),
+        "reviewed_count": len(completed),
+        "average_score": avg_score,
+        "interested_count": interested_count,
+        "pass_count": pass_count,
+        "team_decision": decision,
+    }
 
 
 def get_committee_review(conn: sqlite3.Connection, document_id: int) -> dict[str, Any] | None:
