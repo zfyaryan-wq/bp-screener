@@ -764,8 +764,13 @@ with connect() as conn:
                         )
                         conn.commit()
                         st.error(f"Translation failed: {exc}")
-            if action_cols[1].button(labels["detail"]["translate_cn"], key=f"translate-zh-{document_id}"):
-                with st.spinner(labels["detail"]["translating_cn"]):
+            if action_cols[1].button(
+                labels["detail"].get("translate_cn", "Translate this BP profile to Chinese"),
+                key=f"translate-zh-{document_id}",
+            ):
+                with st.spinner(
+                    labels["detail"].get("translating_cn", "Translating the structured profile to Chinese with the LLM...")
+                ):
                     try:
                         chunks = get_project_chunks(conn, int(document_id))
                         translated_profile = translate_project_profile(project, chunks, target_language="Chinese")
@@ -801,7 +806,12 @@ with connect() as conn:
                 st.session_state.get(english_translation_key, project),
             )
             if chinese_translation_key in st.session_state:
-                st.info(labels["detail"]["translated_cn"])
+                st.info(
+                    labels["detail"].get(
+                        "translated_cn",
+                        "Showing LLM-translated Chinese profile. Source file and original evidence remain available below.",
+                    )
+                )
             elif english_translation_key in st.session_state:
                 st.info(labels["detail"]["translated"])
 
