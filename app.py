@@ -290,8 +290,12 @@ with st.sidebar:
         type=[suffix.lstrip(".") for suffix in SUPPORTED_SUFFIXES],
         accept_multiple_files=True,
     )
-    use_llm = st.checkbox(labels["use_llm"], value=True)
-    auto_process = st.checkbox(labels["auto_process"], value=True)
+    with st.expander(labels["quick_start"]["advanced"], expanded=False):
+        use_llm = st.checkbox(labels["use_llm"], value=True)
+        auto_process = st.checkbox(labels["auto_process"], value=True)
+        limit = st.number_input(labels["limit"], min_value=1, max_value=10000, value=20)
+        force_process = st.checkbox(labels["force_process"], value=False)
+        manual_process = st.button(labels["process"])
     if st.button(labels["save"], disabled=not uploads):
         saved_paths = save_uploads(uploads)
         with connect() as sidebar_conn:
@@ -330,9 +334,7 @@ with st.sidebar:
         else:
             st.success(labels["saved"].format(saved=len(saved_paths), path=INBOX_DIR))
 
-    limit = st.number_input(labels["limit"], min_value=1, max_value=10000, value=20)
-    force_process = st.checkbox(labels["force_process"], value=False)
-    if st.button(labels["process"]):
+    if manual_process:
         with st.spinner(labels["processing"]):
             ok, failed = ingest_path(INBOX_DIR, use_llm=use_llm, limit=int(limit), force=force_process)
         with connect() as sidebar_conn:
@@ -346,19 +348,29 @@ with st.sidebar:
         st.success(labels["processed"].format(ok=ok, failed=failed))
 
 
-tab_search, tab_library_qa, tab_team, tab_projects, tab_analytics, tab_detail, tab_status = st.tabs(labels["tabs"])
+st.markdown(
+    f"""
+    <div class="workflow-strip">
+      <div class="workflow-card"><strong>{labels["quick_start"]["step_upload"]}</strong><span>{labels["upload"]}</span></div>
+      <div class="workflow-card"><strong>{labels["quick_start"]["step_review"]}</strong><span>{labels["open_bp"]} / {labels["library_qa"]["title"]}</span></div>
+      <div class="workflow-card"><strong>{labels["quick_start"]["step_decide"]}</strong><span>{labels["team"]["personal_reviews"]} / {labels["team"]["consensus"]}</span></div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+with connect() as overview_conn:
+    overview_stats = document_stats(overview_conn)
+    overview_metrics = st.columns(4)
+    overview_metrics[0].metric(labels["analytics"]["project_count"], count_projects(overview_conn))
+    overview_metrics[1].metric(labels["status"]["done"], overview_stats.get("done", 0))
+    overview_metrics[2].metric(labels["detail"]["ai_related"], count_projects(overview_conn, ai_only=True))
+    overview_metrics[3].metric(labels["status"]["failed"], overview_stats.get("failed", 0))
+
+tab_projects, tab_library_qa, tab_detail, tab_team, tab_analytics, tab_search, tab_status = st.tabs(labels["tabs"])
 
 with connect() as conn:
     with tab_search:
-        stats = document_stats(conn)
-        total_projects = count_projects(conn)
-        ai_project_count = count_projects(conn, ai_only=True)
-        metric_cols = st.columns(4)
-        metric_cols[0].metric(labels["status"]["total"], total_projects)
-        metric_cols[1].metric(labels["status"]["done"], stats.get("done", 0))
-        metric_cols[2].metric(labels["detail"]["ai_related"], ai_project_count)
-        metric_cols[3].metric(labels["status"]["failed"], stats.get("failed", 0))
-
         query_cols = st.columns([3, 1])
         query = query_cols[0].text_input(labels["keyword"], placeholder=labels["keyword_placeholder"])
         search_mode = query_cols[1].selectbox(
@@ -387,12 +399,24 @@ with connect() as conn:
     with tab_library_qa:
         st.markdown(f"### {labels['library_qa']['title']}")
         st.caption(labels["library_qa"]["subtitle"])
+        if "library_qa_question" not in st.session_state:
+            st.session_state["library_qa_question"] = ""
+        example_questions = [
+            "Which projects should we discuss first?",
+            "Which AI healthcare projects have strong teams?",
+            "Which projects look risky or unclear?",
+        ]
+        example_cols = st.columns(3)
+        for index, example in enumerate(example_questions):
+            if example_cols[index].button(example, key=f"qa-example-{index}", use_container_width=True):
+                st.session_state["library_qa_question"] = example
         with st.form("library-qa-form"):
             library_question = st.text_area(
                 labels["library_qa"]["title"],
                 placeholder=labels["library_qa"]["placeholder"],
                 height=110,
                 label_visibility="collapsed",
+                key="library_qa_question",
             )
             ask_submitted = st.form_submit_button(labels["library_qa"]["ask"])
 
@@ -416,6 +440,14 @@ with connect() as conn:
 
         if st.session_state.get("library_qa_last"):
             result = st.session_state["library_qa_last"]
+            if result.get("from_cache"):
+                st.info("Loaded from local QA cache." if lang == "en" else "已从本地问答缓存读取。")
+            if result.get("used_fallback"):
+                st.warning(
+                    "Using evidence-only fallback because the AI answer could not be generated."
+                    if lang == "en"
+                    else "当前使用证据兜底回答：AI 总结没有正常生成。"
+                )
             st.markdown(f"**{labels['library_qa']['answer']}**")
             st.write(result.get("answer") or labels["empty"])
             sources = result.get("sources") or []
@@ -526,20 +558,23 @@ with connect() as conn:
                         st.rerun()
 
     with tab_projects:
-        col1, col2, col3, col4 = st.columns(4)
-        industry = col1.text_input(labels["industry_filter"], placeholder=labels["industry_placeholder"])
-        stage = col2.text_input(labels["stage_filter"], placeholder=labels["stage_placeholder"])
-        if lang == "zh":
-            recommendation = col3.selectbox(labels["recommendation"], ["", "高", "中", "低", "未知"])
-        else:
-            recommendation_label = col3.selectbox(labels["recommendation"], ["", "High", "Medium", "Low", "Unknown"])
-            recommendation = {
-                "High": "高",
-                "Medium": "中",
-                "Low": "低",
-                "Unknown": "未知",
-            }.get(recommendation_label, "")
-        ai_only = col4.checkbox(labels["ai_only"])
+        st.markdown(f"### {labels['tabs'][0]}")
+        st.markdown(f"<p class='subtle-section'>{labels['quick_start']['subtitle']}</p>", unsafe_allow_html=True)
+        with st.expander(labels["quick_start"]["filters"], expanded=True):
+            col1, col2, col3, col4 = st.columns(4)
+            industry = col1.text_input(labels["industry_filter"], placeholder=labels["industry_placeholder"])
+            stage = col2.text_input(labels["stage_filter"], placeholder=labels["stage_placeholder"])
+            if lang == "zh":
+                recommendation = col3.selectbox(labels["recommendation"], ["", "高", "中", "低", "未知"])
+            else:
+                recommendation_label = col3.selectbox(labels["recommendation"], ["", "High", "Medium", "Low", "Unknown"])
+                recommendation = {
+                    "High": "高",
+                    "Medium": "中",
+                    "Low": "低",
+                    "Unknown": "未知",
+                }.get(recommendation_label, "")
+            ai_only = col4.checkbox(labels["ai_only"])
 
         total_rows = count_projects(
             conn,
@@ -548,10 +583,10 @@ with connect() as conn:
             recommendation=recommendation,
             ai_only=ai_only,
         )
-        page_cols = st.columns([1, 1, 2])
+        page_cols = st.columns([1, 2])
         page_size = int(page_cols[0].selectbox(labels["page_size"], [6, 12, 24, 48], index=1))
         max_page = max(1, (total_rows + page_size - 1) // page_size)
-        page_number = int(page_cols[1].number_input(labels["page_number"], min_value=1, max_value=max_page, value=1))
+        page_number = int(page_cols[0].number_input(labels["page_number"], min_value=1, max_value=max_page, value=1))
         start_index = (page_number - 1) * page_size
         end_index = min(start_index + page_size, total_rows)
         page_rows = list_projects_page(
@@ -564,7 +599,7 @@ with connect() as conn:
             offset=start_index,
         )
         if total_rows:
-            page_cols[2].markdown(
+            page_cols[1].markdown(
                 labels["page_summary"].format(start=start_index + 1, end=end_index, total=total_rows)
             )
 
@@ -610,13 +645,15 @@ with connect() as conn:
                 st.rerun()
         if display_rows:
             card_columns = st.columns(3)
-            for index, row in enumerate(display_rows[:6]):
+            for index, row in enumerate(display_rows):
                 with card_columns[index % 3]:
                     st.markdown(project_card_html(row, labels, lang), unsafe_allow_html=True)
                     if st.button(labels["open_bp"], key=f"open-card-{row['document_id']}", use_container_width=True):
                         st.session_state["document_id"] = int(row["document_id"])
                         st.session_state["library_open_document_id"] = int(row["document_id"])
                         st.rerun()
+        else:
+            st.info(labels["quick_start"]["no_projects"])
 
         if st.session_state.get("library_open_document_id"):
             render_inline_bp_view(conn, int(st.session_state["library_open_document_id"]), labels, lang)
@@ -657,16 +694,17 @@ with connect() as conn:
                 for row in display_rows
             ]
         )
-        st.dataframe(table, use_container_width=True, hide_index=True)
-        if not table.empty:
-            csv = table.to_csv(index=False).encode("utf-8-sig")
-            st.download_button(labels["export"], csv, "bp_projects.csv", "text/csv")
-            st.download_button(
-                labels["export_excel"],
-                table_bytes_excel(table),
-                "bp_projects.xlsx",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
+        with st.expander(labels["quick_start"]["full_table"], expanded=False):
+            st.dataframe(table, use_container_width=True, hide_index=True)
+            if not table.empty:
+                csv = table.to_csv(index=False).encode("utf-8-sig")
+                st.download_button(labels["export"], csv, "bp_projects.csv", "text/csv")
+                st.download_button(
+                    labels["export_excel"],
+                    table_bytes_excel(table),
+                    "bp_projects.xlsx",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
 
     with tab_analytics:
         analytics_rows = list_projects(conn)

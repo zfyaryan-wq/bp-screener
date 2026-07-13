@@ -4,6 +4,7 @@ import re
 import sqlite3
 from typing import Any
 
+from .config import RAG_KEYWORD_PREFILTER_LIMIT, RAG_SEMANTIC_MAX_ROWS
 from .db import normalize_project_row
 from .embeddings import cosine_packed, embed_text
 
@@ -231,6 +232,7 @@ def search_chunks(conn: sqlite3.Connection, query: str, limit: int = 20) -> list
         """
         SELECT
           chunks_fts.document_id,
+          chunks_fts.chunk_id,
           chunks_fts.file_name,
           chunks_fts.page,
           snippet(chunks_fts, 0, '[', ']', '...', 12) AS snippet,
@@ -247,13 +249,29 @@ def search_chunks(conn: sqlite3.Connection, query: str, limit: int = 20) -> list
     return [dict(row) for row in rows]
 
 
-def semantic_search_chunks(conn: sqlite3.Connection, query: str, limit: int = 20) -> list[dict[str, Any]]:
+def semantic_search_chunks(
+    conn: sqlite3.Connection,
+    query: str,
+    limit: int = 20,
+    document_ids: set[int] | None = None,
+) -> list[dict[str, Any]]:
     if not query.strip():
         return []
     query_vector = embed_text(query)
+    params: list[Any] = []
+    where_parts = ["d.deleted_at IS NULL"]
+    if document_ids:
+        placeholders = ",".join("?" for _ in document_ids)
+        where_parts.append(f"c.document_id IN ({placeholders})")
+        params.extend(sorted(document_ids))
+        limit_sql = ""
+    else:
+        limit_sql = " LIMIT ?"
+        params.append(RAG_SEMANTIC_MAX_ROWS)
     rows = conn.execute(
-        """
+        f"""
         SELECT
+          c.id AS chunk_id,
           c.document_id,
           d.file_name,
           c.page,
@@ -262,8 +280,11 @@ def semantic_search_chunks(conn: sqlite3.Connection, query: str, limit: int = 20
         FROM chunk_embeddings e
         JOIN chunks c ON c.id = e.chunk_id
         JOIN documents d ON d.id = c.document_id
-        WHERE d.deleted_at IS NULL
-        """
+        WHERE {" AND ".join(where_parts)}
+        ORDER BY c.id DESC
+        {limit_sql}
+        """,
+        params,
     ).fetchall()
     scored = []
     for row in rows:
@@ -274,6 +295,7 @@ def semantic_search_chunks(conn: sqlite3.Connection, query: str, limit: int = 20
         scored.append(
             {
                 "document_id": row["document_id"],
+                "chunk_id": row["chunk_id"],
                 "file_name": row["file_name"],
                 "page": row["page"],
                 "snippet": content[:360],
@@ -286,8 +308,15 @@ def semantic_search_chunks(conn: sqlite3.Connection, query: str, limit: int = 20
 
 
 def hybrid_search_chunks(conn: sqlite3.Connection, query: str, limit: int = 20) -> list[dict[str, Any]]:
-    keyword_rows = search_chunks(conn, query, limit=limit)
-    semantic_rows = semantic_search_chunks(conn, query, limit=limit)
+    prefilter_limit = max(limit, RAG_KEYWORD_PREFILTER_LIMIT)
+    keyword_rows = search_chunks(conn, query, limit=prefilter_limit)
+    candidate_document_ids = {int(row["document_id"]) for row in keyword_rows if row.get("document_id")}
+    semantic_rows = semantic_search_chunks(
+        conn,
+        query,
+        limit=prefilter_limit,
+        document_ids=candidate_document_ids or None,
+    )
     merged: dict[tuple[int, int | None, str], dict[str, Any]] = {}
     for rank, row in enumerate(keyword_rows):
         key = (int(row["document_id"]), row.get("page"), str(row.get("snippet", ""))[:80])

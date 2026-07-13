@@ -13,6 +13,8 @@ It is intentionally small, low-cost, and easy for four collaborators to use. The
 ## Features
 
 - Batch ingestion for `PDF / PPTX / DOCX / TXT / MD`
+- Fast PyMuPDF-based PDF text extraction with `pypdf` fallback available
+- Optional local OCR fallback for scanned PDFs
 - LLM-powered structured extraction through SiliconFlow, DeepSeek, or any OpenAI-compatible endpoint
 - Local SQLite project database
 - SQLite FTS keyword search over extracted document chunks
@@ -88,6 +90,32 @@ Keep the real API key in `.env` only. `.env` is ignored by Git and should not be
 
 If no model endpoint is available yet, uncheck "Use DeepSeek V3.2 extraction" in the web app. The system will use a basic keyword-based fallback, which is useful for testing the workflow but not recommended for real screening.
 
+## Optional Local OCR
+
+Scanned or image-only PDFs may not contain selectable text. BP Screener can run local OCR before LLM extraction so those decks still enter search, RAG, and structured screening.
+
+Install Python dependencies:
+
+```powershell
+pip install -r requirements.txt
+```
+
+Install the Tesseract OCR desktop engine separately, then point `.env` to it if it is not on `PATH`:
+
+```env
+PDF_TEXT_ENGINE=pymupdf
+OCR_ENABLED=true
+OCR_LANG=eng+chi_sim
+OCR_MIN_PAGE_CHARS=80
+OCR_MIN_DOCUMENT_CHARS=800
+OCR_MAX_PAGES=25
+OCR_DPI=180
+TESSERACT_CMD=C:\Program Files\Tesseract-OCR\tesseract.exe
+OCR_TESSDATA_DIR=data/tessdata
+```
+
+`PDF_TEXT_ENGINE=pymupdf` uses the fast local PyMuPDF parser first, with `pypdf` available as a fallback by setting `PDF_TEXT_ENGINE=auto`. OCR is only used when the whole PDF has very little extracted text, which avoids OCR on normal slide decks that already contain selectable text. `OCR_MAX_PAGES` keeps batch processing fast by limiting how many pages per deck use OCR.
+
 ## Run The Web App
 
 ```powershell
@@ -121,6 +149,23 @@ The system now includes a lightweight RAG retrieval layer:
 - `chunks_fts`: SQLite FTS keyword search
 - `chunk_embeddings`: local feature-hashing semantic vectors
 - `Hybrid Search`: keyword + semantic retrieval
+- `Ask All BPs` cache: repeated questions reuse the local SQLite answer cache when the BP library has not changed
+
+The retrieval path follows a lightweight version of ideas from RAGFlow, LlamaIndex, Milvus, mem0, LightRAG, and llmware: use cheap local signals first, then spend compute only on a smaller candidate set. For this student-team version, BP Screener keeps SQLite instead of adding a vector database by default:
+
+- BM25 / FTS gets a candidate set quickly.
+- Structured project profiles add high-signal BP metadata.
+- Local vectors rerank only the candidate set when possible.
+- If there are no candidates, semantic search scans only up to `RAG_SEMANTIC_MAX_ROWS`.
+- Repeated library questions are cached until the BP library changes.
+
+Tune speed settings in `.env`:
+
+```env
+RAG_KEYWORD_PREFILTER_LIMIT=80
+RAG_SEMANTIC_MAX_ROWS=20000
+RAG_QA_CACHE_ENABLED=true
+```
 
 Newly ingested BPs automatically create chunk vectors. Backfill existing data with:
 

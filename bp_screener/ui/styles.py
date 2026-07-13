@@ -11,18 +11,18 @@ section[data-testid="stSidebar"] {
     border-right: 1px solid #e5e7eb;
 }
 .main .block-container {
-    max-width: 1200px;
-    padding-top: 1.25rem;
+    max-width: 1280px;
+    padding-top: 1rem;
 }
 .hero-card {
-    padding: 34px 38px;
-    border-radius: 28px;
+    padding: 26px 30px;
+    border-radius: 24px;
     color: white;
     background:
         radial-gradient(circle at top right, rgba(147,197,253,.42), transparent 34%),
         linear-gradient(135deg, #0f172a, #1e3a8a 56%, #2563eb);
     box-shadow: 0 22px 55px rgba(15, 23, 42, .16);
-    margin-bottom: 24px;
+    margin-bottom: 18px;
 }
 .hero-eyebrow {
     margin: 0 0 10px;
@@ -34,8 +34,8 @@ section[data-testid="stSidebar"] {
 }
 .hero-title {
     margin: 0;
-    font-size: clamp(36px, 6vw, 64px);
-    line-height: .98;
+    font-size: clamp(34px, 5vw, 56px);
+    line-height: 1;
     letter-spacing: -.05em;
     font-weight: 850;
 }
@@ -46,8 +46,30 @@ section[data-testid="stSidebar"] {
     font-size: 17px;
     line-height: 1.65;
 }
+.workflow-strip {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    margin: 0 0 18px;
+}
+.workflow-card {
+    padding: 16px 18px;
+    border: 1px solid #e5e7eb;
+    border-radius: 18px;
+    background: #ffffff;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, .06);
+}
+.workflow-card strong {
+    display: block;
+    color: #0f172a;
+    font-size: 15px;
+}
+.workflow-card span {
+    color: #667085;
+    font-size: 13px;
+}
 div[data-testid="stMetric"] {
-    padding: 18px 20px;
+    padding: 14px 16px;
     border: 1px solid #e5e7eb;
     border-radius: 22px;
     background: white;
@@ -82,21 +104,22 @@ div[data-testid="stForm"] {
     box-shadow: 0 18px 45px rgba(15, 23, 42, .06);
 }
 .project-card {
-    padding: 20px;
+    padding: 18px;
     border: 1px solid #e5e7eb;
     border-radius: 22px;
     background: white;
     box-shadow: 0 18px 45px rgba(15, 23, 42, .08);
-    min-height: 230px;
+    min-height: 210px;
 }
 .project-card h3 {
     margin: 0 0 8px;
-    font-size: 22px;
+    font-size: 20px;
     letter-spacing: -.02em;
 }
 .project-card p {
     color: #667085;
     line-height: 1.55;
+    font-size: 14px;
 }
 .pill {
     display: inline-block;
@@ -107,6 +130,16 @@ div[data-testid="stForm"] {
     background: #dbeafe;
     font-size: 12px;
     font-weight: 800;
+}
+.subtle-section {
+    color: #667085;
+    font-size: 14px;
+    margin: -4px 0 14px;
+}
+@media (max-width: 900px) {
+    .workflow-strip {
+        grid-template-columns: 1fr;
+    }
 }
 </style>
 """

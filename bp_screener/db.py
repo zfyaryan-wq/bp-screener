@@ -153,6 +153,14 @@ CREATE TABLE IF NOT EXISTS chunk_embeddings (
   FOREIGN KEY(document_id) REFERENCES documents(id)
 );
 
+CREATE TABLE IF NOT EXISTS library_qa_cache (
+  cache_key TEXT PRIMARY KEY,
+  lang TEXT NOT NULL,
+  question TEXT NOT NULL,
+  answer_json TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_documents_status_updated ON documents(status, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_projects_updated ON projects(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_projects_industry ON projects(industry);
@@ -164,6 +172,7 @@ CREATE INDEX IF NOT EXISTS idx_chunk_embeddings_document ON chunk_embeddings(doc
 CREATE INDEX IF NOT EXISTS idx_personal_reviews_document ON personal_reviews(document_id);
 CREATE INDEX IF NOT EXISTS idx_personal_reviews_reviewer ON personal_reviews(reviewer_id);
 CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_library_qa_cache_created ON library_qa_cache(created_at DESC);
 """
 
 
@@ -765,6 +774,56 @@ def activity_rows(conn: sqlite3.Connection, limit: int = 200) -> list[dict[str, 
         (limit,),
     ).fetchall()
     return [dict(row) for row in rows]
+
+
+def library_updated_at(conn: sqlite3.Connection) -> str:
+    row = conn.execute(
+        """
+        SELECT MAX(updated_at) AS updated_at
+        FROM documents
+        WHERE deleted_at IS NULL
+        """
+    ).fetchone()
+    return str(row["updated_at"] or "") if row else ""
+
+
+def get_library_qa_cache(conn: sqlite3.Connection, cache_key: str) -> dict[str, Any] | None:
+    row = conn.execute(
+        """
+        SELECT answer_json, created_at
+        FROM library_qa_cache
+        WHERE cache_key = ?
+        """,
+        (cache_key,),
+    ).fetchone()
+    if not row:
+        return None
+    if library_updated_at(conn) > str(row["created_at"] or ""):
+        return None
+    cached = loads(row["answer_json"]) or {}
+    cached["from_cache"] = True
+    return cached
+
+
+def save_library_qa_cache(
+    conn: sqlite3.Connection,
+    cache_key: str,
+    lang: str,
+    question: str,
+    answer: dict[str, Any],
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO library_qa_cache(cache_key, lang, question, answer_json, created_at)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(cache_key) DO UPDATE SET
+          lang = excluded.lang,
+          question = excluded.question,
+          answer_json = excluded.answer_json,
+          created_at = CURRENT_TIMESTAMP
+        """,
+        (cache_key, lang, question, dumps(answer)),
+    )
 
 
 def delete_document(conn: sqlite3.Connection, document_id: int) -> None:

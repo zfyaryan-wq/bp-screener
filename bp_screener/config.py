@@ -26,3 +26,18 @@ LLM_ENABLE_THINKING = os.getenv("LLM_ENABLE_THINKING", "false").lower() == "true
 LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "4096"))
 LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "120"))
 
+OCR_ENABLED = os.getenv("OCR_ENABLED", "true").lower() == "true"
+OCR_LANG = os.getenv("OCR_LANG", "eng+chi_sim")
+OCR_MIN_PAGE_CHARS = int(os.getenv("OCR_MIN_PAGE_CHARS", "80"))
+OCR_MIN_DOCUMENT_CHARS = int(os.getenv("OCR_MIN_DOCUMENT_CHARS", "800"))
+OCR_MAX_PAGES = int(os.getenv("OCR_MAX_PAGES", "25"))
+OCR_DPI = int(os.getenv("OCR_DPI", "180"))
+TESSERACT_CMD = os.getenv("TESSERACT_CMD", "").strip()
+OCR_TESSDATA_DIR_VALUE = os.getenv("OCR_TESSDATA_DIR", "").strip()
+OCR_TESSDATA_DIR = str(project_path(OCR_TESSDATA_DIR_VALUE)) if OCR_TESSDATA_DIR_VALUE else ""
+PDF_TEXT_ENGINE = os.getenv("PDF_TEXT_ENGINE", "pymupdf").strip().lower()
+
+RAG_KEYWORD_PREFILTER_LIMIT = int(os.getenv("RAG_KEYWORD_PREFILTER_LIMIT", "80"))
+RAG_SEMANTIC_MAX_ROWS = int(os.getenv("RAG_SEMANTIC_MAX_ROWS", "20000"))
+RAG_QA_CACHE_ENABLED = os.getenv("RAG_QA_CACHE_ENABLED", "true").lower() == "true"
+
