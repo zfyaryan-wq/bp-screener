@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -36,12 +37,27 @@ class D1Client:
         self.remote = remote
 
     def execute(self, sql: str) -> list[dict[str, Any]]:
-        command = ["npx", "wrangler", "d1", "execute", self.database]
+        command = [resolve_npx(), "wrangler", "d1", "execute", self.database]
         command.append("--remote" if self.remote else "--local")
-        command.extend(["--command", sql, "--json"])
-        completed = subprocess.run(command, cwd=ROOT, check=True, capture_output=True, text=True)
+        command.extend(["--command", " ".join(sql.split()), "--json"])
+        completed = subprocess.run(
+            command,
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
         payload = json.loads(completed.stdout or "[]")
         return extract_rows(payload)
+
+
+def resolve_npx() -> str:
+    npx = shutil.which("npx.cmd") or shutil.which("npx")
+    if not npx:
+        raise SystemExit("npx was not found on PATH. Install Node.js/npm or run Wrangler directly.")
+    return npx
 
 
 def sql_quote(value: str) -> str:
