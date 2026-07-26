@@ -180,12 +180,29 @@ export default {
       if (auth) return auth;
       return await openFile(url.pathname.split("/").pop(), env);
     }
-    return await env.ASSETS.fetch(request);
+    return await serveAsset(request, env);
     } catch (error) {
       return json({ error: "Internal server error.", detail: String(error?.message || error || "").slice(0, 300) }, 500);
     }
   },
 };
+
+async function serveAsset(request, env) {
+  const response = await env.ASSETS.fetch(request);
+  const url = new URL(request.url);
+  if (!response.ok) return response;
+  if (url.pathname === "/" || url.pathname === "/index.html" || url.pathname === "/app.js") {
+    const headers = new Headers(response.headers);
+    headers.set("cache-control", "no-store, max-age=0, must-revalidate");
+    headers.set("pragma", "no-cache");
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  }
+  return response;
+}
 
 const TEAM_USER_META = [
   {
@@ -1974,12 +1991,13 @@ async function reviewBoard(request, env) {
   const actor = request.headers.get("x-bp-user") || "";
   const lang = localizedLang(url.searchParams.get("lang"));
   const weekStart = normalizeWeekStart(url.searchParams.get("week"));
+  const includeLeaderboards = url.searchParams.get("leaderboards") !== "0";
   const [shortlist, nominations, calendar, activity, leaderboards] = await Promise.all([
     shortlistSnapshot(env, actor, lang),
     listNominations(env, weekStart, actor, lang),
     calendarEvents(env, weekStart, lang),
     dailyActivitySummary(env),
-    bpLeaderboards(env, lang),
+    includeLeaderboards ? bpLeaderboards(env, lang) : Promise.resolve(null),
   ]);
   return json({ week_start: weekStart, shortlist, nominations, calendar, activity, leaderboards });
 }

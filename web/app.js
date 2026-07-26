@@ -664,7 +664,7 @@ const labels = {
   },
 };
 
-const AUTH_STATE_VERSION = "20260726-force-login-overlay";
+const AUTH_STATE_VERSION = "20260726-force-login-overlay-v2";
 const AUTH_STATE_VERSION_KEY = "bp-screener-auth-state-version";
 migrateAuthState();
 
@@ -959,10 +959,7 @@ language.addEventListener("change", () => {
   localStorage.setItem("bp-screener-lang", lang);
   applyLanguage();
   if (currentUser && teamMembers.includes(currentUser)) {
-    loadFilterOptions();
-    loadWeightProfiles();
-    loadProjects();
-    loadReviewBoard();
+    refreshWorkspaceForCurrentUser();
   }
 });
 
@@ -1078,9 +1075,9 @@ loginForm.addEventListener("submit", async (event) => {
 });
 
 applyLanguage();
-loadAccessCodeStatus();
 setLeftRailView(leftRailMode === "calendar" ? "calendar" : "workspace");
 bootstrapWorkspace();
+window.setTimeout(loadAccessCodeStatus, 0);
 
 function t(key) {
   return labels[lang][key] || key;
@@ -1192,17 +1189,24 @@ function renderWelcome() {
 async function refreshWorkspaceForCurrentUser() {
   await Promise.allSettled([
     loadFilterOptions(),
-    loadWeightProfiles(),
-    loadScoringProfile(),
     loadProjects(),
   ]);
+  window.setTimeout(() => {
+    Promise.allSettled([
+      loadWeightProfiles(),
+      loadScoringProfile(),
+    ]);
+  }, 120);
   loadNonCriticalWorkspaceData();
 }
 
 async function bootstrapWorkspace() {
+  currentUser = "";
+  renderWelcome();
   loginOverlay.classList.remove("hidden");
   if (!teamMembers.includes(storedLoginUser)) {
     storedLoginUser = "";
+    localStorage.removeItem("bp-screener-user");
     clearSessionOnly();
   }
   if (storedLoginUser) userSelect.value = storedLoginUser;
@@ -1215,9 +1219,12 @@ function loadNonCriticalWorkspaceData() {
   window.setTimeout(() => {
     Promise.allSettled([
       loadScoringQueue(),
-      loadReviewBoard(),
+      loadReviewBoard({ includeLeaderboards: false }),
     ]);
-  }, 0);
+  }, 400);
+  window.setTimeout(() => {
+    loadReviewBoard({ includeLeaderboards: true });
+  }, 1600);
 }
 
 function clearSessionOnly() {
@@ -1239,6 +1246,7 @@ async function loadAccessCodeStatus() {
   if (!response?.ok) return;
   const data = await response.json().catch(() => ({}));
   accountAccessCodeStatus = data.members || {};
+  renderLoginPrompt();
 }
 
 function canUseStoredSessionFor(user) {
@@ -2458,16 +2466,22 @@ function templateLabel(key) {
   return labelsByKey[key] || labelsByKey.type_a;
 }
 
-async function loadReviewBoard() {
+async function loadReviewBoard(options = {}) {
   if (!currentUser || !teamMembers.includes(currentUser)) return;
+  const includeLeaderboards = options.includeLeaderboards !== false;
   const params = new URLSearchParams({
     lang,
     timezone: userTimezone,
     locale: currentLocale(),
+    leaderboards: includeLeaderboards ? "1" : "0",
   });
   const response = await apiFetch(`/api/review/board?${params.toString()}`);
   if (!response) return;
-  reviewBoard = await response.json();
+  const data = await response.json();
+  reviewBoard = {
+    ...data,
+    leaderboards: data.leaderboards || reviewBoard?.leaderboards || null,
+  };
   renderReviewBoard();
 }
 
