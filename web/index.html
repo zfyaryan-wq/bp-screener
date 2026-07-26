@@ -32,6 +32,9 @@
             <option value="en">English</option>
             <option value="zh">中文</option>
           </select>
+          <button id="openVrtDraftsButton" type="button" class="railIconButton vrtDraftNavButton" aria-label="VRT" aria-expanded="false" data-i18n-title="vrtDraftsTitle">
+            <span class="buttonIconShell" aria-hidden="true">VRT</span>
+          </button>
           <button id="openCalendarRail" type="button" class="railIconButton" aria-label="Calendar" aria-expanded="false" data-i18n-title="calendarOpen">
             <span class="buttonIconShell" aria-hidden="true">
               <svg class="buttonIcon" viewBox="0 0 24 24" focusable="false">
@@ -109,6 +112,26 @@
       </section>
     </dialog>
 
+    <dialog id="vrtDraftDialog" class="vrtDraftDialog" aria-labelledby="vrtDraftDialogTitle">
+      <section class="panel vrtDraftPopover">
+        <div class="sectionTitle">
+          <div>
+            <h2 id="vrtDraftDialogTitle" data-i18n="vrtDraftsTitle">VRT drafts</h2>
+            <span data-i18n="vrtDraftModeCopy">VRT Agent only drafts scores. You make the final call.</span>
+          </div>
+          <button id="vrtDraftCloseButton" type="button" class="secondary compactButton" data-i18n="closeUpload">Close</button>
+        </div>
+        <div class="vrtDraftBody">
+          <div id="scoringQueueSummary" class="scoringQueueSummary compact"></div>
+          <div class="vrtDraftActions">
+            <button id="reviewPendingDrafts" type="button" class="secondary" data-i18n="reviewPendingDrafts">Review pending drafts</button>
+            <button id="generateDraftScores" type="button" data-i18n="generateDraftScores">Generate draft for selected BP</button>
+          </div>
+          <small id="scoringDraftStatus" class="subtle" data-i18n="currentBpOnlyHint">Current implementation drafts the selected BP first; queue review is ready for pending drafts.</small>
+        </div>
+      </section>
+    </dialog>
+
     <main class="workbenchShell">
       <aside class="leftRail">
         <div id="leftWorkspaceView" class="leftRailView">
@@ -132,19 +155,6 @@
                   <option value="type_c" data-i18n="templateTypeC">Type C</option>
                   <option value="my_custom" data-i18n="templateMyCustom">My custom</option>
                 </select>
-              </section>
-              <section class="vrtDraftModeBlock">
-                <strong data-i18n="vrtDraftModeTitle">VRT draft mode</strong>
-                <p data-i18n="vrtDraftModeCopy">VRT Agent only drafts scores. You make the final call.</p>
-                <div class="weightQuickActions">
-                  <button id="generateDraftScores" type="button" data-i18n="generateDraftScores">Generate draft scores</button>
-                  <button id="reviewPendingDrafts" type="button" class="secondary" data-i18n="reviewPendingDrafts">Review pending drafts</button>
-                </div>
-                <small id="scoringDraftStatus" class="subtle" data-i18n="currentBpOnlyHint">Current implementation drafts the selected BP first; queue review is ready for pending drafts.</small>
-              </section>
-              <section class="reviewQueueBlock">
-                <strong data-i18n="reviewQueueTitle">My review queue</strong>
-                <div id="scoringQueueSummary" class="scoringQueueSummary"></div>
               </section>
               <div class="weightQuickActions">
                 <button id="openWeightEditor" type="button" class="secondary compactButton" data-i18n="advancedScoringSettings">Advanced scoring settings</button>

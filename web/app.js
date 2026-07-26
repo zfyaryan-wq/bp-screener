@@ -141,6 +141,7 @@ const labels = {
     currentWeightSummary: "Weight preference",
     learnedFrom: "Learned from {count} BP adjustments",
     lastUpdated: "Last updated",
+    vrtDraftsTitle: "VRT drafts",
     vrtDraftModeTitle: "VRT draft mode",
     vrtDraftModeCopy: "VRT Agent only drafts scores. You make the final call.",
     generateDraftScores: "Generate current BP draft",
@@ -149,7 +150,7 @@ const labels = {
     pendingDraftCount: "{count} drafts",
     nextPendingDraft: "Next: {project}",
     reviewNextDraft: "Review next",
-    noDraftsShort: "0 drafts",
+    noDraftsShort: "No draft scores yet",
     draftsShort: "drafts",
     adjustedShort: "adjusted",
     confirmedShort: "confirmed",
@@ -477,6 +478,7 @@ const labels = {
     currentWeightSummary: "当前权重偏好",
     learnedFrom: "已学习自 {count} 个 BP 的人工调整",
     lastUpdated: "最近更新",
+    vrtDraftsTitle: "VRT 草稿",
     vrtDraftModeTitle: "VRT 草稿模式",
     vrtDraftModeCopy: "VRT Agent only drafts scores. You make the final call.",
     generateDraftScores: "生成当前 BP 草稿分",
@@ -485,7 +487,7 @@ const labels = {
     pendingDraftCount: "{count} 条草稿",
     nextPendingDraft: "下一条：{project}",
     reviewNextDraft: "看下一条",
-    noDraftsShort: "0 草稿",
+    noDraftsShort: "还没有草稿分",
     draftsShort: "草稿",
     adjustedShort: "已调",
     confirmedShort: "已确认",
@@ -910,6 +912,9 @@ const scoringQueueSummary = document.querySelector("#scoringQueueSummary");
 const scoreReviewCard = document.querySelector("#scoreReviewCard");
 const leftWorkspaceView = document.querySelector("#leftWorkspaceView");
 const leftCalendarView = document.querySelector("#leftCalendarView");
+const vrtDraftOpenButton = document.querySelector("#openVrtDraftsButton");
+const vrtDraftDialog = document.querySelector("#vrtDraftDialog");
+const vrtDraftCloseButton = document.querySelector("#vrtDraftCloseButton");
 const calendarRailToggle = document.querySelector("#openCalendarRail");
 const calendarDialog = document.querySelector("#calendarDialog");
 const calendarCloseButton = document.querySelector("#calendarCloseButton");
@@ -1033,6 +1038,14 @@ if (scoringTemplateSelect) {
 }
 generateDraftScoresButton?.addEventListener("click", generateCurrentDraftScore);
 reviewPendingDraftsButton?.addEventListener("click", reviewPendingDraftQueue);
+vrtDraftOpenButton?.addEventListener("click", openVrtDraftDialog);
+vrtDraftCloseButton?.addEventListener("click", closeVrtDraftDialog);
+vrtDraftDialog?.addEventListener("click", (event) => {
+  if (event.target === vrtDraftDialog) closeVrtDraftDialog();
+});
+vrtDraftDialog?.addEventListener("close", () => {
+  vrtDraftOpenButton?.setAttribute("aria-expanded", "false");
+});
 calendarRailToggle?.addEventListener("click", openCalendarDialog);
 calendarCloseButton?.addEventListener("click", closeCalendarDialog);
 calendarDialog?.addEventListener("click", (event) => {
@@ -1042,6 +1055,7 @@ calendarDialog?.addEventListener("close", () => {
   calendarRailToggle?.setAttribute("aria-expanded", "false");
 });
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && vrtDraftDialog?.open) closeVrtDraftDialog();
   if (event.key === "Escape" && calendarDialog?.open) closeCalendarDialog();
 });
 personalActivityOpenButton?.addEventListener("click", openPersonalActivityPanel);
@@ -1166,6 +1180,32 @@ function closePersonalActivityPanel() {
   if (!personalActivityOverlay) return;
   personalActivityOverlay.hidden = true;
   personalActivityOpenButton?.setAttribute("aria-expanded", "false");
+}
+
+function openVrtDraftDialog() {
+  if (!vrtDraftDialog) return;
+  renderScoringQueueSummary();
+  if (vrtDraftDialog.open) return;
+  if (typeof vrtDraftDialog.showModal === "function") {
+    vrtDraftDialog.showModal();
+  } else {
+    vrtDraftDialog.setAttribute("open", "");
+  }
+  vrtDraftOpenButton?.setAttribute("aria-expanded", "true");
+}
+
+function closeVrtDraftDialog() {
+  if (!vrtDraftDialog) return;
+  if (!vrtDraftDialog.open && !vrtDraftDialog.hasAttribute("open")) {
+    vrtDraftOpenButton?.setAttribute("aria-expanded", "false");
+    return;
+  }
+  if (typeof vrtDraftDialog.close === "function") {
+    vrtDraftDialog.close();
+  } else {
+    vrtDraftDialog.removeAttribute("open");
+    vrtDraftOpenButton?.setAttribute("aria-expanded", "false");
+  }
 }
 
 function openCalendarDialog() {
@@ -2574,20 +2614,24 @@ function renderScoringQueueSummary() {
       ? t("nextPendingDraft").replace("{project}", firstDraft.label)
       : t("noDraftsForTemplate");
   }
+  if (generateDraftScoresButton) {
+    generateDraftScoresButton.disabled = !selectedDocumentId;
+    generateDraftScoresButton.title = selectedDocumentId ? t("generateDraftScores") : t("selectProjectHint");
+  }
   if (!scoringQueueSummary) return;
-  const items = [
-    [t("draftsShort"), draftCount],
-    [t("adjustedShort"), Number(stats.adjusted_this_week || 0)],
-    [t("confirmedShort"), Number(stats.confirmed || stats.confirmed_count || 0)],
-  ];
-  const summary = items
-    .map(([label, count]) => `<div class="queueMetric"><strong>${count}</strong><span>${escapeHtml(label)}</span></div>`)
-    .join("");
-  scoringQueueSummary.innerHTML = `${summary}${
-    firstDraft?.label
-      ? `<div class="queueMetric nextDraft"><strong>${escapeHtml(String(firstDraft.draft_score ?? "-"))}</strong><span>${escapeHtml(`${t("nextShort")}: ${firstDraft.label}`)}</span></div>`
-      : `<div class="queueMetric nextDraft empty"><strong>0</strong><span>${escapeHtml(t("noDraftsForTemplate"))}</span></div>`
-  }`;
+  scoringQueueSummary.innerHTML = `
+    <div class="queueMetric templateMetric"><strong>${escapeHtml(templateLabel(activeScoringTemplate))}</strong><span>${escapeHtml(t("currentTemplate"))}</span></div>
+    ${
+      draftCount > 0
+        ? `<div class="queueMetric"><strong>${draftCount}</strong><span>${escapeHtml(t("pendingDraftCount").replace("{count}", String(draftCount)))}</span></div>`
+        : `<div class="queueMetric empty"><strong>${escapeHtml(t("noDraftsShort"))}</strong><span>${escapeHtml(t("noDraftsForTemplate"))}</span></div>`
+    }
+    ${
+      firstDraft?.label
+        ? `<div class="queueMetric nextDraft"><strong>${escapeHtml(String(firstDraft.draft_score ?? "-"))}</strong><span>${escapeHtml(`${t("nextShort")}: ${firstDraft.label}`)}</span></div>`
+        : ""
+    }
+  `;
 }
 
 function templateLabel(key) {
@@ -3539,6 +3583,7 @@ async function showProject(documentId) {
   if (!project) return;
   selectedDocumentId = Number(project.document_id || documentId);
   selectedProject = project;
+  renderScoringQueueSummary();
   renderWeeklyNominationSpotlight(reviewBoard?.nominations || []);
 
   detail.innerHTML = `
