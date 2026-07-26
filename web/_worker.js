@@ -989,6 +989,7 @@ async function listProjects(request, env) {
   const actor = request.headers.get("x-bp-user") || "";
   const highlightOnly = url.searchParams.get("highlightOnly") === "true";
   const hiddenOnly = url.searchParams.get("hiddenOnly") === "true";
+  const includePersonalScoring = url.searchParams.get("includePersonalScoring") === "true";
   const conditions = [];
   const bindings = [];
   await ensureReviewOpsTables(env);
@@ -1071,23 +1072,23 @@ async function listProjects(request, env) {
     SELECT
       p.id,
       p.document_id,
-      p.project_name,
-      p.company_name,
-      p.industry,
-      p.country_or_region,
-      p.financing_stage,
-      p.customer_type,
-      p.revenue_stage,
-      p.recommendation,
-      p.risk_level,
+      COALESCE(json_extract(t.profile_json, '$.project_name'), p.project_name) AS project_name,
+      COALESCE(json_extract(t.profile_json, '$.company_name'), p.company_name) AS company_name,
+      COALESCE(json_extract(t.profile_json, '$.industry'), p.industry) AS industry,
+      COALESCE(json_extract(t.profile_json, '$.country_or_region'), p.country_or_region) AS country_or_region,
+      COALESCE(json_extract(t.profile_json, '$.financing_stage'), p.financing_stage) AS financing_stage,
+      COALESCE(json_extract(t.profile_json, '$.customer_type'), p.customer_type) AS customer_type,
+      COALESCE(json_extract(t.profile_json, '$.revenue_stage'), p.revenue_stage) AS revenue_stage,
+      COALESCE(json_extract(t.profile_json, '$.recommendation'), p.recommendation) AS recommendation,
+      COALESCE(json_extract(t.profile_json, '$.risk_level'), p.risk_level) AS risk_level,
       p.ai_related,
-      p.ai_category,
-      p.business_model,
-      p.one_line_summary,
-      p.team_highlights,
-      p.traction,
-      p.risks,
-      p.tags,
+      COALESCE(json_extract(t.profile_json, '$.ai_category'), p.ai_category) AS ai_category,
+      COALESCE(json_extract(t.profile_json, '$.business_model'), p.business_model) AS business_model,
+      COALESCE(json_extract(t.profile_json, '$.one_line_summary'), p.one_line_summary) AS one_line_summary,
+      COALESCE(json_extract(t.profile_json, '$.team_highlights'), p.team_highlights) AS team_highlights,
+      COALESCE(json_extract(t.profile_json, '$.traction'), p.traction) AS traction,
+      COALESCE(json_extract(t.profile_json, '$.risks'), p.risks) AS risks,
+      COALESCE(json_extract(t.profile_json, '$.tags'), p.tags) AS tags,
       p.screening_score,
       p.team_score,
       p.traction_score,
@@ -1096,8 +1097,7 @@ async function listProjects(request, env) {
       d.file_name,
       d.source_url,
       d.created_at AS document_created_at,
-      lo.library_number,
-      t.profile_json AS localized_profile_json
+      lo.library_number
     FROM projects p
     JOIN documents d ON d.id = p.document_id
     LEFT JOIN library_order lo ON lo.document_id = p.document_id
@@ -1119,7 +1119,9 @@ async function listProjects(request, env) {
   if (profile) {
     projects = rankProjectsByProfile(projects, profile).slice(0, 200);
   }
-  await attachPersonalScoring(projects, actor, env, scoringTemplate);
+  if (includePersonalScoring || usesPersonalScoringSort) {
+    await attachPersonalScoring(projects, actor, env, scoringTemplate);
+  }
   if (usesPersonalScoringSort) {
     projects = sortProjectsByPersonalScoring(projects).slice(0, 200);
   }
@@ -2104,6 +2106,72 @@ async function projectOpsMap(documentIds, actor, env) {
   return map;
 }
 
+async function projectListOpsMap(documentIds, actor, env) {
+  const ids = [...new Set((documentIds || []).map(Number).filter((id) => Number.isFinite(id) && id > 0))];
+  const map = new Map(ids.map((id) => [id, defaultProjectOps(id, actor)]));
+  if (!ids.length) return map;
+  await ensureReviewOpsTables(env);
+  for (const chunk of chunkArray(ids, 80)) {
+    const placeholders = chunk.map(() => "?").join(", ");
+    const [statuses, marks, shortlist, reactions] = await Promise.all([
+      env.DB.prepare(`SELECT document_id, status, note, set_by, updated_at FROM bp_project_status WHERE document_id IN (${placeholders})`).bind(...chunk).all(),
+      env.DB.prepare(`SELECT document_id, actor, mark, note, updated_at FROM bp_marks WHERE document_id IN (${placeholders})`).bind(...chunk).all(),
+      env.DB.prepare(`SELECT document_id, owner, position, updated_at FROM bp_shortlist_items WHERE document_id IN (${placeholders}) AND owner = ?`).bind(...chunk, actor).all(),
+      env.DB.prepare(`
+        SELECT document_id, actor, reaction, MAX(created_at) AS created_at
+        FROM bp_reactions
+        WHERE document_id IN (${placeholders})
+          AND reaction IN ('like', 'dislike')
+          AND target_type = 'project'
+          AND COALESCE(target_id, 0) = 0
+        GROUP BY document_id, actor, reaction
+        ORDER BY created_at DESC
+      `).bind(...chunk).all(),
+    ]);
+    for (const row of statuses.results || []) {
+      const item = map.get(Number(row.document_id));
+      if (item) item.global_status = normalizeStatusRow(row);
+    }
+    for (const row of marks.results || []) {
+      const item = map.get(Number(row.document_id));
+      if (!item) continue;
+      item.personal_marks.push({ actor: row.actor, mark: row.mark, note: row.note || "", updated_at: row.updated_at });
+      if (row.actor === actor) item.my_marks.push(row.mark);
+      if (row.mark === "highlight") {
+        item.highlights.actors.push(row.actor);
+        item.highlights.count = item.highlights.actors.length;
+        if (row.actor === actor) item.highlights.highlighted_by_me = true;
+      }
+    }
+    for (const row of shortlist.results || []) {
+      const item = map.get(Number(row.document_id));
+      if (!item) continue;
+      item.in_my_shortlist = true;
+      item.my_shortlist_position = Number(row.position || 0);
+    }
+    for (const row of reactions.results || []) {
+      const item = map.get(Number(row.document_id));
+      if (!item) continue;
+      const bucket = row.reaction === "dislike" ? item.dislikes : item.likes;
+      bucket.actors.push(row.actor);
+      bucket.count = bucket.actors.length;
+      if (row.actor === actor) {
+        if (row.reaction === "dislike") {
+          bucket.disliked_by_me = true;
+        } else {
+          bucket.liked_by_me = true;
+        }
+      }
+    }
+  }
+  for (const item of map.values()) {
+    item.highlights.actors = sortTeamActors(item.highlights.actors);
+    item.likes.actors = sortTeamActors(item.likes.actors);
+    item.dislikes.actors = sortTeamActors(item.dislikes.actors);
+  }
+  return map;
+}
+
 function defaultProjectOps(documentId, actor = "") {
   return {
     document_id: Number(documentId),
@@ -2781,10 +2849,9 @@ async function attachProjectCollaboration(projects, env, lang = "en", actor = ""
 
 async function attachProjectListCollaboration(projects, env, lang = "en", actor = "") {
   if (!projects.length) return;
-  const map = await collaborationStatusMap(projects.map((project) => project.document_id), env, lang);
-  const opsMap = await projectOpsMap(projects.map((project) => project.document_id), actor, env);
+  const opsMap = await projectListOpsMap(projects.map((project) => project.document_id), actor, env);
   for (const project of projects) {
-    project.collaboration = map.get(Number(project.document_id)) || defaultCollaborationContext(lang);
+    project.collaboration = { document_id: Number(project.document_id), statuses: [], comments: [], team_summary: "" };
     project.ops = opsMap.get(Number(project.document_id)) || defaultProjectOps(Number(project.document_id), actor);
   }
 }

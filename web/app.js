@@ -689,6 +689,7 @@ let lastAuthError = "";
 let lastAuthStatus = 0;
 localStorage.removeItem("bp-screener-access-code");
 let projects = [];
+let projectListRequestSeq = 0;
 let defaultFactors = [];
 let factorPools = { public: [], personal: [], system: [] };
 let selectedFactors = [];
@@ -825,7 +826,7 @@ const teamMembers = teamUserMeta.map((member) => member.name);
 const teamMemberOrder = new Map(teamMembers.map((member, index) => [member, index]));
 const allowedUploadExtensions = new Set(["pdf", "ppt", "pptx", "doc", "docx"]);
 const uploadMaxBytes = 20 * 1024 * 1024;
-const PROJECT_LIST_CACHE_PREFIX = "bp-project-list-cache-v1";
+const PROJECT_LIST_CACHE_PREFIX = "bp-project-list-cache-v2";
 const PROJECT_LIST_CACHE_MAX_AGE_MS = 10 * 60 * 1000;
 const welcomeTemplates = {
   en: [
@@ -1284,10 +1285,10 @@ function renderWelcome() {
 
 async function refreshWorkspaceForCurrentUser() {
   if (!hasUserConfirmedEntry || !currentUser || !teamMembers.includes(currentUser)) return;
-  await Promise.allSettled([
-    loadFilterOptions(),
-    loadProjects(),
-  ]);
+  await loadProjects();
+  window.setTimeout(() => {
+    loadFilterOptions();
+  }, 80);
   window.setTimeout(() => {
     Promise.allSettled([
       loadWeightProfiles(),
@@ -1687,6 +1688,7 @@ function hashCode(value) {
 }
 
 async function loadProjects() {
+  const requestId = ++projectListRequestSeq;
   const params = new URLSearchParams();
   params.set("lang", lang);
   params.set("view", "list");
@@ -1708,6 +1710,9 @@ async function loadProjects() {
   if (sortBy === "custom_weight" && activeWeightProfileId) {
     params.set("weightProfileId", String(activeWeightProfileId));
   }
+  if (sortBy === "personal_scoring_desc") {
+    params.set("includePersonalScoring", "true");
+  }
 
   const cacheKey = projectListCacheKey(params);
   const cached = readProjectListCache(cacheKey);
@@ -1719,7 +1724,33 @@ async function loadProjects() {
   const response = await apiFetch(`/api/projects?${params.toString()}`);
   if (!response) return;
   const data = await response.json().catch(() => ({}));
+  if (requestId !== projectListRequestSeq) return;
   projects = data.projects || [];
+  writeProjectListCache(cacheKey, projects);
+  renderProjectList();
+  if (params.get("includePersonalScoring") !== "true") {
+    window.setTimeout(() => hydrateProjectListPersonalScores(params, cacheKey, requestId), 150);
+  }
+}
+
+async function hydrateProjectListPersonalScores(baseParams, cacheKey, requestId) {
+  if (requestId !== projectListRequestSeq) return;
+  const params = new URLSearchParams(baseParams);
+  params.set("includePersonalScoring", "true");
+  const response = await apiFetch(`/api/projects?${params.toString()}`);
+  if (!response || requestId !== projectListRequestSeq) return;
+  const data = await response.json().catch(() => ({}));
+  if (requestId !== projectListRequestSeq || !Array.isArray(data.projects)) return;
+  const scoresByDocument = new Map(
+    data.projects.map((project) => [Number(project.document_id), {
+      personal_score: project.personal_score,
+      personal_score_source: project.personal_score_source,
+    }]),
+  );
+  projects = projects.map((project) => ({
+    ...project,
+    ...(scoresByDocument.get(Number(project.document_id)) || {}),
+  }));
   writeProjectListCache(cacheKey, projects);
   renderProjectList();
 }
