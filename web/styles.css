@@ -3001,6 +3001,7 @@ button.secondary:hover {
   gap: 8px;
   min-height: 320px;
   min-width: 0;
+  max-width: 100%;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -3040,20 +3041,107 @@ button.secondary:hover {
   overflow: hidden;
 }
 
+.projectListStatus {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 10px 14px 0;
+  border: 1px solid rgba(52, 211, 153, 0.22);
+  border-radius: 14px;
+  padding: 8px 10px;
+  color: #bbf7d0;
+  background:
+    radial-gradient(circle at top left, rgba(34, 197, 94, 0.14), transparent 36%),
+    rgba(2, 8, 8, 0.58);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.projectListStatus[hidden] {
+  display: none;
+}
+
+.projectListStatus.error {
+  border-color: rgba(248, 113, 113, 0.42);
+  color: #fecaca;
+  background:
+    radial-gradient(circle at top left, rgba(248, 113, 113, 0.12), transparent 36%),
+    rgba(2, 8, 8, 0.58);
+}
+
+.projectLoadingState,
+.projectListErrorBlock {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  border: 1px solid rgba(52, 211, 153, 0.24);
+  border-radius: 18px;
+  padding: 18px;
+  background:
+    linear-gradient(90deg, rgba(34, 197, 94, 0.08), transparent 36%, rgba(20, 184, 166, 0.1)),
+    rgba(2, 8, 8, 0.54);
+  background-size: 220% 100%, auto;
+  box-shadow: inset 0 0 0 1px rgba(134, 239, 172, 0.06);
+  animation: vrtAgentPanelScan 1.8s linear infinite;
+}
+
+.projectLoadingState strong,
+.projectListErrorBlock strong {
+  color: #d1fae5;
+}
+
+.projectLoadingState p,
+.projectListErrorBlock p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.projectLoadingSpinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid rgba(52, 211, 153, 0.18);
+  border-top-color: #86efac;
+  border-radius: 50%;
+  box-shadow: 0 0 18px rgba(34, 197, 94, 0.22);
+  animation: projectLoadingSpin 900ms linear infinite;
+}
+
+.projectListErrorBlock {
+  grid-template-columns: minmax(0, 1fr) auto;
+  border-color: rgba(248, 113, 113, 0.38);
+  animation: none;
+}
+
+.projectListErrorBlock strong,
+.projectListErrorBlock p {
+  grid-column: 1;
+}
+
+.projectListErrorBlock button {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
 .projectTableHeader,
 .projectRow {
   display: grid;
   grid-template-columns:
-    minmax(54px, 0.42fr)
-    minmax(150px, 1.35fr)
-    minmax(96px, 0.82fr)
-    minmax(96px, 0.82fr)
-    minmax(76px, 0.58fr)
-    minmax(86px, 0.68fr)
-    minmax(164px, 1.1fr);
-  gap: 7px;
+    minmax(44px, 0.38fr)
+    minmax(112px, 1.55fr)
+    minmax(92px, 0.95fr)
+    minmax(58px, 0.46fr)
+    minmax(76px, 0.74fr)
+    minmax(90px, 0.54fr);
+  gap: 6px;
   align-items: stretch;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .projectTableHeader {
@@ -3084,7 +3172,7 @@ button.secondary:hover {
 }
 
 .projectRow {
-  padding: 8px 10px;
+  padding: 8px;
   border-radius: 15px;
   transition:
     border-color 160ms ease,
@@ -3314,18 +3402,44 @@ button.secondary:hover {
   flex-wrap: wrap;
   align-content: center;
   align-items: center;
-  gap: 5px;
+  justify-content: flex-end;
+  gap: 4px;
+  overflow: hidden;
 }
 
 .rowActions button {
-  width: fit-content;
-  min-height: 28px;
-  padding: 5px 7px;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
   border-radius: 999px;
   font-size: 11px;
   line-height: 1.2;
   box-shadow: none;
   white-space: nowrap;
+}
+
+.rowActions button > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.rowActions .buttonIcon,
+.rowActions .reactionIcon {
+  margin: 0;
+  font-size: 14px;
+}
+
+.rowActions .reactionButton strong {
+  color: currentColor;
+  font-size: 10px;
 }
 
 .rowActions button.secondary {
@@ -4272,11 +4386,19 @@ dialog::backdrop {
   }
 }
 
+@keyframes projectLoadingSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .agentAvatar,
   .agentAvatar.idle,
   .agentAvatar.working,
   .agentAvatar.loading,
+  .projectLoadingState,
+  .projectLoadingSpinner,
   .aiPanel.working,
   .aiPanel.loading {
     animation: none;
@@ -4325,13 +4447,12 @@ dialog::backdrop {
   .projectTableHeader,
   .projectRow {
     grid-template-columns:
-      minmax(48px, 0.38fr)
-      minmax(124px, 1.22fr)
-      minmax(78px, 0.72fr)
-      minmax(78px, 0.72fr)
-      minmax(58px, 0.5fr)
-      minmax(72px, 0.58fr)
-      minmax(132px, 0.98fr);
+      minmax(42px, 0.34fr)
+      minmax(104px, 1.42fr)
+      minmax(82px, 0.86fr)
+      minmax(54px, 0.42fr)
+      minmax(68px, 0.66fr)
+      minmax(84px, 0.5fr);
   }
 }
 

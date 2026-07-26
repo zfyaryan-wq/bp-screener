@@ -41,12 +41,19 @@ const labels = {
     bpLibraryOverview: "BP Library Overview",
     bpLibraryOverviewHint: "Portfolio-wide metrics, filters, sorting, and the BP list.",
     bpLibraryList: "BP Library List",
+    projectListLoading: "Loading BP library...",
+    projectListRefreshing: "Refreshing latest projects...",
+    projectListCachedRefreshing: "Showing cached list · refreshing...",
+    projectListLoadError: "Unable to load BP library.",
+    retry: "Retry",
     libraryNumber: "Library #",
     libraryNumberHint: "Stable intake number, oldest first",
     hideDiscussed: "Discussed",
     hideNotInterested: "Not interested",
     highlightOnly: "Highlighted",
     hiddenOnly: "Hidden",
+    visibilityFilter: "Visibility",
+    visibilityActive: "Active BPs",
     hiddenFiltersHint: "UI-only filters",
     moreFilters: "More filters",
     hideDiscussedTitle: "Hide discussed projects",
@@ -378,12 +385,19 @@ const labels = {
     bpLibraryOverview: "BP 库概览",
     bpLibraryOverviewHint: "集中查看全库指标、筛选、排序和 BP 列表。",
     bpLibraryList: "BP 库列表",
+    projectListLoading: "正在加载 BP 项目库...",
+    projectListRefreshing: "正在刷新最新项目...",
+    projectListCachedRefreshing: "正在显示缓存列表 · 后台刷新中...",
+    projectListLoadError: "无法加载 BP 项目库。",
+    retry: "重试",
     libraryNumber: "入库编号",
     libraryNumberHint: "按入库时间从早到晚固定编号",
     hideDiscussed: "已讨论",
     hideNotInterested: "不感兴趣",
     highlightOnly: "高亮",
     hiddenOnly: "隐藏",
+    visibilityFilter: "可见范围",
+    visibilityActive: "活跃 BP",
     hiddenFiltersHint: "仅界面筛选",
     moreFilters: "更多筛选",
     hideDiscussedTitle: "隐藏已讨论项目",
@@ -690,6 +704,7 @@ let lastAuthStatus = 0;
 localStorage.removeItem("bp-screener-access-code");
 let projects = [];
 let projectListRequestSeq = 0;
+let projectListState = { phase: "idle", message: "", error: "" };
 let defaultFactors = [];
 let factorPools = { public: [], personal: [], system: [] };
 let selectedFactors = [];
@@ -714,6 +729,8 @@ let hideDiscussedProjects = localStorage.getItem("bp-hide-discussed-projects") =
 let hideNotInterestedProjects = localStorage.getItem("bp-hide-not-interested-projects") === "true";
 let highlightOnlyProjects = localStorage.getItem("bp-highlight-only-projects") === "true";
 let hiddenOnlyProjects = localStorage.getItem("bp-hidden-only-projects") === "true";
+let visibilityFilterValue = localStorage.getItem("bp-visibility-filter") || visibilityFilterValueFromState();
+applyVisibilityFilterValue(visibilityFilterValue, { persist: false });
 let accountAccessCodeStatus = {};
 let activeScoringTemplate = normalizeScoringTemplateKey(localStorage.getItem("bp-scoring-template"));
 const userTimezone = resolveUserTimezone();
@@ -843,6 +860,8 @@ const welcomeTemplates = {
 
 const language = document.querySelector("#language");
 const grid = document.querySelector("#projectGrid");
+const projectListStatus = document.querySelector("#projectListStatus");
+const searchButton = document.querySelector("#searchButton");
 const snippetList = document.querySelector("#snippetList");
 const snippetQuery = document.querySelector("#snippetQuery");
 const recommendQuestion = document.querySelector("#recommendQuestion");
@@ -985,26 +1004,9 @@ language.addEventListener("change", () => {
   }
 });
 
-document.querySelector("#searchButton").addEventListener("click", loadProjects);
-document.querySelector("#hideDiscussed")?.addEventListener("change", (event) => {
-  hideDiscussedProjects = event.target.checked;
-  localStorage.setItem("bp-hide-discussed-projects", String(hideDiscussedProjects));
-  renderProjectList();
-});
-document.querySelector("#hideNotInterested")?.addEventListener("change", (event) => {
-  hideNotInterestedProjects = event.target.checked;
-  localStorage.setItem("bp-hide-not-interested-projects", String(hideNotInterestedProjects));
-  renderProjectList();
-});
-document.querySelector("#highlightOnly")?.addEventListener("change", (event) => {
-  highlightOnlyProjects = event.target.checked;
-  localStorage.setItem("bp-highlight-only-projects", String(highlightOnlyProjects));
-  loadProjects();
-});
-document.querySelector("#hiddenOnly")?.addEventListener("change", (event) => {
-  hiddenOnlyProjects = event.target.checked;
-  localStorage.setItem("bp-hidden-only-projects", String(hiddenOnlyProjects));
-  syncHiddenFilterControls();
+searchButton?.addEventListener("click", loadProjects);
+document.querySelector("#visibilityFilter")?.addEventListener("change", (event) => {
+  applyVisibilityFilterValue(event.target.value || "active");
   loadProjects();
 });
 document.querySelector("#snippetButton")?.addEventListener("click", searchSnippets);
@@ -1687,6 +1689,62 @@ function hashCode(value) {
   return hash;
 }
 
+function setProjectListState(nextState = {}) {
+  projectListState = {
+    phase: nextState.phase || "idle",
+    message: nextState.message || "",
+    error: nextState.error || "",
+  };
+  renderProjectListStatus();
+}
+
+function setProjectSearchBusy(isBusy) {
+  if (!searchButton) return;
+  searchButton.disabled = isBusy;
+  searchButton.textContent = isBusy ? t("projectListRefreshing") : t("search");
+}
+
+function renderProjectListStatus() {
+  if (!projectListStatus) return;
+  const { phase, message, error } = projectListState;
+  if (!message && !error) {
+    projectListStatus.hidden = true;
+    projectListStatus.className = "projectListStatus";
+    projectListStatus.innerHTML = "";
+    return;
+  }
+  const isError = phase === "error";
+  projectListStatus.hidden = false;
+  projectListStatus.className = `projectListStatus ${phase}`.trim();
+  projectListStatus.innerHTML = `
+    <span>${escapeHtml(error || message)}</span>
+    ${isError ? `<button type="button" class="secondary compactButton" data-project-list-retry>${escapeHtml(t("retry"))}</button>` : ""}
+  `;
+  projectListStatus.querySelector("[data-project-list-retry]")?.addEventListener("click", loadProjects);
+}
+
+function projectListLoadingBlock(messageKey = "projectListLoading") {
+  return `
+    <div id="projectLoadingState" class="projectLoadingState" role="status" aria-live="polite">
+      <div class="projectLoadingSpinner" aria-hidden="true"></div>
+      <div>
+        <strong>${escapeHtml(t(messageKey))}</strong>
+        <p>${escapeHtml(t("projectListRefreshing"))}</p>
+      </div>
+    </div>
+  `;
+}
+
+function projectListErrorBlock(errorMessage) {
+  return `
+    <div class="panel projectEmpty projectListErrorBlock" role="alert">
+      <strong>${escapeHtml(t("projectListLoadError"))}</strong>
+      <p>${escapeHtml(errorMessage || t("projectListLoadError"))}</p>
+      <button type="button" class="secondary compactButton" data-project-list-retry>${escapeHtml(t("retry"))}</button>
+    </div>
+  `;
+}
+
 async function loadProjects() {
   const requestId = ++projectListRequestSeq;
   const params = new URLSearchParams();
@@ -1701,7 +1759,8 @@ async function loadProjects() {
   setParam(params, "revenueStage", value("#revenueStage"));
   setParam(params, "riskLevel", value("#riskLevel"));
   setParam(params, "tag", value("#tag"));
-  setParam(params, "aiRelated", value("#aiRelated"));
+  if (hideDiscussedProjects) params.set("hideDiscussed", "true");
+  if (hideNotInterestedProjects) params.set("hideNotInterested", "true");
   if (highlightOnlyProjects) params.set("highlightOnly", "true");
   if (hiddenOnlyProjects) params.set("hiddenOnly", "true");
   const sortBy = value("#sortBy");
@@ -1716,20 +1775,44 @@ async function loadProjects() {
 
   const cacheKey = projectListCacheKey(params);
   const cached = readProjectListCache(cacheKey);
+  const hasCachedProjects = Boolean(cached?.projects?.length);
   if (cached?.projects?.length) {
     projects = cached.projects;
+    setProjectListState({ phase: "refreshing", message: t("projectListCachedRefreshing") });
+    renderProjectList();
+  } else {
+    setProjectListState({ phase: "loading", message: t("projectListLoading") });
     renderProjectList();
   }
 
-  const response = await apiFetch(`/api/projects?${params.toString()}`);
-  if (!response) return;
-  const data = await response.json().catch(() => ({}));
-  if (requestId !== projectListRequestSeq) return;
-  projects = data.projects || [];
-  writeProjectListCache(cacheKey, projects);
-  renderProjectList();
-  if (params.get("includePersonalScoring") !== "true") {
-    window.setTimeout(() => hydrateProjectListPersonalScores(params, cacheKey, requestId), 150);
+  setProjectSearchBusy(true);
+  try {
+    const response = await apiFetch(`/api/projects?${params.toString()}`);
+    if (!response) return;
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || `${t("projectListLoadError")} HTTP ${response.status}`);
+    }
+    if (requestId !== projectListRequestSeq) return;
+    projects = data.projects || [];
+    writeProjectListCache(cacheKey, projects);
+    setProjectListState({ phase: "idle" });
+    renderProjectList();
+    if (params.get("includePersonalScoring") !== "true") {
+      window.setTimeout(() => hydrateProjectListPersonalScores(params, cacheKey, requestId), 150);
+    }
+  } catch (error) {
+    if (requestId !== projectListRequestSeq) return;
+    setProjectListState({
+      phase: "error",
+      error: error?.message || t("projectListLoadError"),
+    });
+    if (!hasCachedProjects) {
+      projects = [];
+      renderProjectList();
+    }
+  } finally {
+    if (requestId === projectListRequestSeq) setProjectSearchBusy(false);
   }
 }
 
@@ -1799,7 +1882,6 @@ function setupFilterAutoRefresh() {
     "#revenueStage",
     "#riskLevel",
     "#tag",
-    "#aiRelated",
     "#sortBy",
   ].forEach((selector) => {
     document.querySelector(selector)?.addEventListener("change", loadProjects);
@@ -1807,16 +1889,35 @@ function setupFilterAutoRefresh() {
 }
 
 function syncHiddenFilterControls() {
-  const discussedToggle = document.querySelector("#hideDiscussed");
-  const notInterestedToggle = document.querySelector("#hideNotInterested");
-  const highlightOnlyToggle = document.querySelector("#highlightOnly");
-  const hiddenOnlyToggle = document.querySelector("#hiddenOnly");
-  if (discussedToggle) discussedToggle.checked = hideDiscussedProjects;
-  if (notInterestedToggle) notInterestedToggle.checked = hideNotInterestedProjects;
-  if (highlightOnlyToggle) highlightOnlyToggle.checked = highlightOnlyProjects;
-  if (hiddenOnlyToggle) hiddenOnlyToggle.checked = hiddenOnlyProjects;
-  if (discussedToggle) discussedToggle.disabled = hiddenOnlyProjects;
-  if (notInterestedToggle) notInterestedToggle.disabled = hiddenOnlyProjects;
+  const visibilityFilter = document.querySelector("#visibilityFilter");
+  if (visibilityFilter) visibilityFilter.value = visibilityFilterValueFromState();
+}
+
+function visibilityFilterValueFromState() {
+  if (hiddenOnlyProjects) return "hidden";
+  if (highlightOnlyProjects) return "highlighted";
+  if (hideNotInterestedProjects) return "hide_not_interested";
+  if (hideDiscussedProjects) return "hide_discussed";
+  return "active";
+}
+
+function applyVisibilityFilterValue(nextValue, options = {}) {
+  const value = ["active", "hide_discussed", "hide_not_interested", "highlighted", "hidden"].includes(nextValue)
+    ? nextValue
+    : "active";
+  visibilityFilterValue = value;
+  hideDiscussedProjects = value === "hide_discussed";
+  hideNotInterestedProjects = value === "hide_not_interested";
+  highlightOnlyProjects = value === "highlighted";
+  hiddenOnlyProjects = value === "hidden";
+  if (options.persist !== false) {
+    localStorage.setItem("bp-visibility-filter", value);
+  }
+  localStorage.setItem("bp-hide-discussed-projects", String(hideDiscussedProjects));
+  localStorage.setItem("bp-hide-not-interested-projects", String(hideNotInterestedProjects));
+  localStorage.setItem("bp-highlight-only-projects", String(highlightOnlyProjects));
+  localStorage.setItem("bp-hidden-only-projects", String(hiddenOnlyProjects));
+  syncHiddenFilterControls();
 }
 
 function renderProjectList() {
@@ -1855,7 +1956,6 @@ function renderFilterOptions(options = {}) {
   renderSelectOptions("#tag", options.tags || []);
   renderSelectOptions("#recommendation", options.recommendations || levelFilterOptions());
   renderSelectOptions("#riskLevel", options.risk_levels || levelFilterOptions());
-  renderSelectOptions("#aiRelated", aiRelatedFilterOptions());
 }
 
 function renderSelectOptions(selector, options) {
@@ -3449,6 +3549,18 @@ function renderProjects(items) {
   const projectCountNode = document.querySelector("#projectCount");
   if (projectCountNode) projectCountNode.textContent = String(items.length);
   if (projectCountMirror) projectCountMirror.textContent = String(items.length);
+  renderProjectListStatus();
+
+  if (!items.length && projectListState.phase === "loading") {
+    grid.innerHTML = projectListLoadingBlock("projectListLoading");
+    return;
+  }
+
+  if (!items.length && projectListState.phase === "error") {
+    grid.innerHTML = projectListErrorBlock(projectListState.error);
+    grid.querySelector("[data-project-list-retry]")?.addEventListener("click", loadProjects);
+    return;
+  }
 
   if (!items.length) {
     grid.innerHTML = `<div class="panel projectEmpty">${t("noProjects")}</div>`;
@@ -3487,7 +3599,6 @@ function projectTableHeader() {
     t("libraryNumber"),
     t("projectCompanyColumn"),
     t("industryRegion"),
-    t("stageCustomerColumn"),
     t("scoreColumn"),
     t("riskRecommendationColumn"),
     t("actions"),
@@ -3505,6 +3616,7 @@ function projectRow(project) {
   const libraryNumber = Number(project.library_number || 0);
   const libraryNumberLabel = libraryNumber > 0 ? `#${String(libraryNumber).padStart(3, "0")}` : "#---";
   const industryRegion = [project.industry, project.country_or_region].filter(Boolean).join(" / ") || t("unknown");
+  const stageCustomer = [project.financing_stage, project.customer_type || project.revenue_stage].filter(Boolean).join(" / ") || t("unknown");
   const summary = project.one_line_summary || "";
   const ops = project.ops || {};
   const status = ops.global_status?.status || "new";
@@ -3537,11 +3649,7 @@ function projectRow(project) {
       </div>
       <div class="projectCell projectStackCell" data-label="${escapeHtml(t("industryRegion"))}">
         <strong>${escapeHtml(industryRegion)}</strong>
-        <small>${escapeHtml((project.tags || []).slice(0, 2).join(" / ") || t("unknown"))}</small>
-      </div>
-      <div class="projectCell projectStackCell" data-label="${escapeHtml(t("stageCustomerColumn"))}">
-        <strong>${escapeHtml(project.financing_stage || t("unknown"))}</strong>
-        <small>${escapeHtml([project.customer_type, project.revenue_stage].filter(Boolean).join(" / ") || t("unknown"))}</small>
+        <small title="${escapeHtml(stageCustomer)}">${escapeHtml(stageCustomer)}</small>
       </div>
       <div class="projectCell scoreCell projectStackCell" data-label="${escapeHtml(t("scoreColumn"))}">
         <strong>${Number(project.personal_score ?? project.screening_score ?? 0)}</strong>

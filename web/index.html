@@ -359,34 +359,15 @@
                 <option value="personal_scoring_desc" data-i18n="sortPersonalScoring">My confirmed scores</option>
               </select>
             </div>
-            <details class="advancedFilterDetails">
-              <summary data-i18n="moreFilters">More filters</summary>
-              <div class="advancedFilterBody">
-                <label data-i18n="aiRelatedFilter">Technology-related</label>
-                <select id="aiRelated">
-                  <option value="" data-i18n="any">Any</option>
-                  <option value="true" data-i18n="yes">Yes</option>
-                  <option value="false" data-i18n="no">No</option>
-                </select>
-              </div>
-            </details>
-            <div class="hiddenFilterGroup" data-i18n-title="hiddenFiltersHint" aria-label="UI-only filters">
-              <label class="filterChip" data-i18n-title="hideDiscussedTitle">
-                <input id="hideDiscussed" type="checkbox" />
-                <span data-i18n="hideDiscussed">Hide discussed</span>
-              </label>
-              <label class="filterChip" data-i18n-title="hideNotInterestedTitle">
-                <input id="hideNotInterested" type="checkbox" />
-                <span data-i18n="hideNotInterested">Hide not interested</span>
-              </label>
-              <label class="filterChip" data-i18n-title="highlightOnlyTitle">
-                <input id="highlightOnly" type="checkbox" />
-                <span data-i18n="highlightOnly">Highlighted only</span>
-              </label>
-              <label class="filterChip" data-i18n-title="hiddenOnlyTitle">
-                <input id="hiddenOnly" type="checkbox" />
-                <span data-i18n="hiddenOnly">Hidden only</span>
-              </label>
+            <div>
+              <label data-i18n="visibilityFilter">Visibility</label>
+              <select id="visibilityFilter">
+                <option value="active" data-i18n="visibilityActive">Active BPs</option>
+                <option value="hide_discussed" data-i18n="hideDiscussedTitle">Hide discussed</option>
+                <option value="hide_not_interested" data-i18n="hideNotInterestedTitle">Hide not interested</option>
+                <option value="highlighted" data-i18n="highlightOnlyTitle">Highlighted only</option>
+                <option value="hidden" data-i18n="hiddenOnlyTitle">Hidden only</option>
+              </select>
             </div>
             <button id="searchButton" data-i18n="search">Search</button>
           </section>
@@ -398,6 +379,7 @@
               <h2 data-i18n="bpLibraryList">BP Library List</h2>
             </div>
           </div>
+          <div id="projectListStatus" class="projectListStatus" aria-live="polite" hidden></div>
           <section id="projectGrid" class="projectList" aria-live="polite"></section>
         </section>
       </section>
