@@ -3595,22 +3595,15 @@ function renderProjects(items) {
   grid.querySelectorAll("[data-project-row]").forEach((row) => {
     row.addEventListener("click", (event) => {
       if (event.target.closest("button, a")) return;
-      const button = row.querySelector("[data-project-expand]");
-      if (button) toggleProjectRowDetails(button);
+      showProject(row.dataset.projectRow);
     });
   });
 }
 
 function projectTableHeader() {
-  const columns = [
-    t("libraryNumber"),
-    t("projectCompanyColumn"),
-    t("industryRegion"),
-    t("stageLabel"),
-    t("scoreColumn"),
-    t("riskLevelLabel"),
-    t("actions"),
-  ];
+  const columns = lang === "zh"
+    ? ["#", "项目", "领域", "阶段", "分", "风险", "操作"]
+    : ["#", "Project", "Sector", "Stage", "Score", "Risk", "Act"];
   return `
     <div class="projectTableHeader" role="row" aria-hidden="true">
       ${columns.map((column) => `<span>${escapeHtml(column)}</span>`).join("")}
@@ -3623,7 +3616,8 @@ function projectRow(project) {
   const company = project.company_name || t("unknown");
   const libraryNumber = Number(project.library_number || 0);
   const libraryNumberLabel = libraryNumber > 0 ? `#${String(libraryNumber).padStart(3, "0")}` : "#---";
-  const industryRegion = [project.industry, project.country_or_region].filter(Boolean).join(" / ") || t("unknown");
+  const sector = project.industry || t("unknown");
+  const projectSubline = [company, project.country_or_region].filter(Boolean).join(" / ") || t("unknown");
   const stageCustomer = [project.customer_type, project.revenue_stage].filter(Boolean).join(" / ") || t("unknown");
   const summary = project.one_line_summary || "";
   const ops = project.ops || {};
@@ -3646,37 +3640,28 @@ function projectRow(project) {
         <strong>${escapeHtml(libraryNumberLabel)}</strong>
         <small>${escapeHtml(t("libraryNumberHint"))}</small>
       </div>
-      <div class="projectMain" data-label="${escapeHtml(t("projectName"))}" title="${escapeHtml(projectName)}">
-        <h3>${escapeHtml(projectName)}</h3>
-        <small>${escapeHtml(company)}</small>
-        ${
-          Number.isFinite(Number(project.custom_rank_score))
-            ? `<div class="rankBadge">${t("customRankScore")}: ${Number(project.custom_rank_score)}</div>`
-            : ""
-        }
+      <div class="projectMain" data-label="${escapeHtml(t("projectName"))}">
+        <button type="button" class="projectOpenButton" data-document-id="${project.document_id}" title="${escapeHtml(t("view"))}: ${escapeHtml(projectName)}">
+          <span class="projectOpenName">${escapeHtml(projectName)}</span>
+          <small>${escapeHtml(projectSubline)}</small>
+        </button>
       </div>
       <div class="projectCell projectStackCell" data-label="${escapeHtml(t("industryRegion"))}">
-        <strong title="${escapeHtml(industryRegion)}">${escapeHtml(industryRegion)}</strong>
-        <small>${escapeHtml((project.tags || [])[0] || t("unknown"))}</small>
+        <strong title="${escapeHtml(sector)}">${escapeHtml(sector)}</strong>
       </div>
       <div class="projectCell projectStackCell" data-label="${escapeHtml(t("stageLabel"))}">
         <strong title="${escapeHtml(project.financing_stage || t("unknown"))}">${escapeHtml(project.financing_stage || t("unknown"))}</strong>
-        <small title="${escapeHtml(stageCustomer)}">${escapeHtml(stageCustomer)}</small>
       </div>
       <div class="projectCell scoreCell projectStackCell" data-label="${escapeHtml(t("scoreColumn"))}">
-        <strong>${Number(project.personal_score ?? project.screening_score ?? 0)}</strong>
-        <span class="scoreSourceTag ${escapeHtml(project.personal_score_source || "base")}">${escapeHtml(personalScoreLabel)}</span>
-        <small>${t("teamScore")} ${Number(project.team_score || 0)} · ${t("tractionScore")} ${Number(project.traction_score || 0)}</small>
+        <strong title="${escapeHtml(personalScoreLabel)}">${Number(project.personal_score ?? project.screening_score ?? 0)}</strong>
       </div>
-      <div class="projectCell projectStackCell" data-label="${escapeHtml(t("riskRecommendationColumn"))}">
-        <strong>${escapeHtml(project.risk_level || t("unknown"))}</strong>
-        <small title="${escapeHtml(project.recommendation || t("unknown"))}">${escapeHtml(project.recommendation || t("unknown"))}</small>
+      <div class="projectCell projectStackCell" data-label="${escapeHtml(t("riskLevelLabel"))}">
+        <strong title="${escapeHtml(project.recommendation || t("unknown"))}">${escapeHtml(project.risk_level || t("unknown"))}</strong>
       </div>
       <div class="rowActions" data-label="${escapeHtml(t("actions"))}">
         <button type="button" class="secondary projectExpandButton" data-project-expand="${project.document_id}" aria-expanded="false" aria-controls="${escapeHtml(rowDetailsId)}" ${buttonAttrs(t("profileDetails"))}>${iconLabel("chevronRight", t("profileDetails"))}</button>
-        ${renderProjectReactionButtons(project.ops, project.document_id)}
-        ${renderProjectHighlightButton(project.ops, project.document_id)}
         <button data-document-id="${project.document_id}" ${buttonAttrs(t("view"))}>${iconLabel("chevronRight", t("view"))}</button>
+        ${renderProjectHighlightButton(project.ops, project.document_id)}
       </div>
       <div id="${escapeHtml(rowDetailsId)}" class="projectRowDetails" hidden>
         ${summary ? `<p class="projectRowSummary">${escapeHtml(summary)}</p>` : ""}
@@ -3684,6 +3669,7 @@ function projectRow(project) {
           <section>
             <strong>${escapeHtml(t("riskRecommendationColumn"))}</strong>
             <p class="subtle">${escapeHtml(project.recommendation || t("unknown"))}</p>
+            <p class="subtle">${escapeHtml(stageCustomer)}</p>
           </section>
           <section>
             <strong>${escapeHtml(t("teamPresence"))}</strong>
@@ -3707,6 +3693,7 @@ function projectRow(project) {
           </section>
           <section class="projectRowSecondaryActions">
             <strong>${escapeHtml(t("actions"))}</strong>
+            ${renderProjectReactionButtons(project.ops, project.document_id)}
             <button data-shortlist-id="${project.document_id}" class="secondary" ${buttonAttrs(t("addToShortlist"))}>${iconLabel("bookmark", t("addToShortlist"))}</button>
             <button data-nominate-id="${project.document_id}" class="secondary" ${buttonAttrs(t("nominateThisWeek"))}>${iconLabel("nominate", t("nominateThisWeek"))}</button>
             ${
