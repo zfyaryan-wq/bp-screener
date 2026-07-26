@@ -37,14 +37,18 @@ body {
   position: fixed;
   inset: 0;
   z-index: 10000;
-  display: grid;
-  place-items: center;
-  padding: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: clamp(10px, 3dvh, 24px);
   pointer-events: auto;
   background:
     radial-gradient(circle at top right, rgba(34, 197, 94, 0.2), transparent 30%),
     rgba(2, 6, 23, 0.82);
   backdrop-filter: blur(12px);
+  overscroll-behavior: contain;
 }
 
 .loginOverlay.hidden {
@@ -52,30 +56,40 @@ body {
 }
 
 .loginCard {
-  width: min(420px, 100%);
+  display: grid;
+  gap: clamp(8px, 1.8dvh, 12px);
+  width: min(400px, 100%);
+  max-height: calc(100dvh - clamp(20px, 6dvh, 48px));
+  overflow-y: auto;
   border: 1px solid var(--line);
-  border-radius: 24px;
-  padding: 28px;
+  border-radius: clamp(18px, 3dvh, 24px);
+  padding: clamp(16px, 3dvh, 24px);
   background:
     linear-gradient(145deg, rgba(9, 24, 22, 0.96), rgba(3, 10, 9, 0.96)) padding-box,
     linear-gradient(135deg, rgba(52, 211, 153, 0.5), rgba(20, 184, 166, 0.08)) border-box;
   box-shadow: var(--shadow), var(--glow);
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 
 .loginCard h2 {
-  margin: 0 0 10px;
-  font-size: 28px;
+  margin: 0;
+  font-size: clamp(22px, 4dvh, 28px);
+  line-height: 1.1;
 }
 
 .loginCard p {
-  margin: 0 0 18px;
+  margin: 0;
   color: var(--muted);
-  line-height: 1.5;
+  font-size: 14px;
+  line-height: 1.35;
 }
 
 .loginCard input,
 .loginCard select {
-  margin-bottom: 14px;
+  min-height: 42px;
+  margin: 0;
+  padding: 10px 12px;
 }
 
 .loginCard small {
@@ -88,20 +102,25 @@ body {
 .loginMemberAvatars {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 8px;
-  margin: 0 0 14px;
+  gap: 6px;
+  margin: 0;
 }
 
 .loginMemberAvatar {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   place-items: center;
   border: 1px solid rgba(52, 211, 153, 0.18);
-  border-radius: 16px;
-  padding: 10px 6px;
+  border-radius: 14px;
+  padding: 7px 4px;
   color: var(--muted);
   background: rgba(2, 8, 8, 0.5);
   box-shadow: none;
+}
+
+.loginMemberAvatar .avatar {
+  --avatar-size: 30px;
+  --avatar-font-size: 11px;
 }
 
 .loginMemberAvatar:hover,
@@ -122,10 +141,13 @@ body {
 
 .loginCard button {
   width: 100%;
+  min-height: 42px;
+  margin: 0;
+  padding: 10px 14px;
 }
 
 .loginError {
-  margin-top: 12px !important;
+  margin: 0 !important;
   color: var(--danger) !important;
   font-size: 14px;
 }
@@ -4294,6 +4316,14 @@ dialog::backdrop {
 }
 
 @media (max-width: 560px) {
+  .loginOverlay {
+    padding: 10px;
+  }
+
+  .loginCard {
+    width: 100%;
+  }
+
   .nav {
     display: grid;
     grid-template-columns: 1fr;
@@ -4397,5 +4427,47 @@ dialog::backdrop {
   .calendarDateText,
   .calendarDaySummary {
     display: none;
+  }
+}
+
+@media (max-height: 480px) {
+  .loginOverlay {
+    align-items: flex-start;
+    padding: 8px;
+  }
+
+  .loginCard {
+    gap: 6px;
+    max-height: calc(100dvh - 16px);
+    padding: 12px;
+  }
+
+  .loginCard h2 {
+    font-size: 20px;
+  }
+
+  .loginCard p {
+    font-size: 12px;
+    line-height: 1.3;
+  }
+
+  .loginMemberAvatar {
+    padding: 5px 4px;
+  }
+
+  .loginMemberAvatar .avatar {
+    --avatar-size: 26px;
+    --avatar-font-size: 10px;
+  }
+
+  .loginMemberAvatar span:last-child {
+    display: none;
+  }
+
+  .loginCard input,
+  .loginCard select,
+  .loginCard button {
+    min-height: 36px;
+    padding-block: 8px;
   }
 }
