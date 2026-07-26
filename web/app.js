@@ -664,6 +664,10 @@ const labels = {
   },
 };
 
+const AUTH_STATE_VERSION = "20260726-force-login-overlay";
+const AUTH_STATE_VERSION_KEY = "bp-screener-auth-state-version";
+migrateAuthState();
+
 let lang = localStorage.getItem("bp-screener-lang") || "en";
 let storedLoginUser = localStorage.getItem("bp-screener-user") || "";
 let currentUser = "";
@@ -1221,6 +1225,13 @@ function clearSessionOnly() {
   accessCode = "";
   sessionStorage.removeItem("bp-screener-session-token");
   localStorage.removeItem("bp-screener-access-code");
+}
+
+function migrateAuthState() {
+  if (localStorage.getItem(AUTH_STATE_VERSION_KEY) === AUTH_STATE_VERSION) return;
+  sessionStorage.removeItem("bp-screener-session-token");
+  localStorage.removeItem("bp-screener-access-code");
+  localStorage.setItem(AUTH_STATE_VERSION_KEY, AUTH_STATE_VERSION);
 }
 
 async function loadAccessCodeStatus() {
