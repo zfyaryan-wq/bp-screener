@@ -3592,6 +3592,13 @@ function renderProjects(items) {
   grid.querySelectorAll("[data-project-expand]").forEach((button) => {
     button.addEventListener("click", () => toggleProjectRowDetails(button));
   });
+  grid.querySelectorAll("[data-project-row]").forEach((row) => {
+    row.addEventListener("click", (event) => {
+      if (event.target.closest("button, a")) return;
+      const button = row.querySelector("[data-project-expand]");
+      if (button) toggleProjectRowDetails(button);
+    });
+  });
 }
 
 function projectTableHeader() {
@@ -3599,8 +3606,9 @@ function projectTableHeader() {
     t("libraryNumber"),
     t("projectCompanyColumn"),
     t("industryRegion"),
+    t("stageLabel"),
     t("scoreColumn"),
-    t("riskRecommendationColumn"),
+    t("riskLevelLabel"),
     t("actions"),
   ];
   return `
@@ -3616,7 +3624,7 @@ function projectRow(project) {
   const libraryNumber = Number(project.library_number || 0);
   const libraryNumberLabel = libraryNumber > 0 ? `#${String(libraryNumber).padStart(3, "0")}` : "#---";
   const industryRegion = [project.industry, project.country_or_region].filter(Boolean).join(" / ") || t("unknown");
-  const stageCustomer = [project.financing_stage, project.customer_type || project.revenue_stage].filter(Boolean).join(" / ") || t("unknown");
+  const stageCustomer = [project.customer_type, project.revenue_stage].filter(Boolean).join(" / ") || t("unknown");
   const summary = project.one_line_summary || "";
   const ops = project.ops || {};
   const status = ops.global_status?.status || "new";
@@ -3633,12 +3641,12 @@ function projectRow(project) {
   const rowDetailsId = `project-row-details-${Number(project.document_id || 0)}`;
 
   return `
-    <article class="projectRow ${highlights.highlighted_by_me ? "highlightedByMe" : highlights.count ? "highlightedByTeam" : ""}" role="row">
+    <article class="projectRow ${highlights.highlighted_by_me ? "highlightedByMe" : highlights.count ? "highlightedByTeam" : ""}" role="row" data-project-row="${project.document_id}">
       <div class="projectCell libraryNumberCell projectStackCell" data-label="${escapeHtml(t("libraryNumber"))}" title="${escapeHtml(t("libraryNumberHint"))}">
         <strong>${escapeHtml(libraryNumberLabel)}</strong>
         <small>${escapeHtml(t("libraryNumberHint"))}</small>
       </div>
-      <div class="projectMain" data-label="${escapeHtml(t("projectName"))}">
+      <div class="projectMain" data-label="${escapeHtml(t("projectName"))}" title="${escapeHtml(projectName)}">
         <h3>${escapeHtml(projectName)}</h3>
         <small>${escapeHtml(company)}</small>
         ${
@@ -3648,7 +3656,11 @@ function projectRow(project) {
         }
       </div>
       <div class="projectCell projectStackCell" data-label="${escapeHtml(t("industryRegion"))}">
-        <strong>${escapeHtml(industryRegion)}</strong>
+        <strong title="${escapeHtml(industryRegion)}">${escapeHtml(industryRegion)}</strong>
+        <small>${escapeHtml((project.tags || [])[0] || t("unknown"))}</small>
+      </div>
+      <div class="projectCell projectStackCell" data-label="${escapeHtml(t("stageLabel"))}">
+        <strong title="${escapeHtml(project.financing_stage || t("unknown"))}">${escapeHtml(project.financing_stage || t("unknown"))}</strong>
         <small title="${escapeHtml(stageCustomer)}">${escapeHtml(stageCustomer)}</small>
       </div>
       <div class="projectCell scoreCell projectStackCell" data-label="${escapeHtml(t("scoreColumn"))}">
@@ -3669,6 +3681,10 @@ function projectRow(project) {
       <div id="${escapeHtml(rowDetailsId)}" class="projectRowDetails" hidden>
         ${summary ? `<p class="projectRowSummary">${escapeHtml(summary)}</p>` : ""}
         <div class="projectRowDetailGrid">
+          <section>
+            <strong>${escapeHtml(t("riskRecommendationColumn"))}</strong>
+            <p class="subtle">${escapeHtml(project.recommendation || t("unknown"))}</p>
+          </section>
           <section>
             <strong>${escapeHtml(t("teamPresence"))}</strong>
             <div class="presenceCell">${renderPresenceChips(project.collaboration?.statuses || [])}</div>
