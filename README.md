@@ -50,7 +50,7 @@ flowchart LR
 
 The production app is a Cloudflare Pages static site (`web/index.html`, `web/app.js`, `web/styles.css`) backed by a Cloudflare Worker API (`web/_worker.js`). The Worker serves project listing, filters, recommendations, score drafts, collaboration, upload, wake, and workbench endpoints.
 
-Cloudflare D1 is the primary online data source. It stores project records, bilingual profiles, scores, comments, nominations, views, BP marks, personal access codes, and session records. Feishu is mainly the original BP file archive; Bitable can assist with sync or manual maintenance, but collaboration state and structured screening data live in D1.
+Cloudflare D1 is the primary online data source. It stores project records, bilingual profiles, scores, comments, nominations, views, BP marks, personal access codes, session records, and upload ingestion jobs. Feishu is mainly the original BP file archive; Bitable can assist with sync or manual maintenance, but collaboration state and structured screening data live in D1.
 
 The Python code in `bp_screener/` and `scripts/` is the local data pipeline for extraction, parsing, translation, Feishu sync, D1 export, and operational sync jobs. `app.py` remains a local/legacy Streamlit workbench, not the production UI.
 
@@ -300,6 +300,17 @@ After local ingestion has produced `data/bp_screener.sqlite`, export data-only u
 python scripts\sync_to_d1.py
 npx wrangler d1 execute bp-screener --remote --file data\d1_seed.sql
 ```
+
+Online uploads are queued for downstream parsing in D1:
+
+```powershell
+npx wrangler d1 execute bp-screener --remote --file cloudflare\migrate_ingest_jobs.sql
+.\.venv\Scripts\python.exe scripts\process_ingest_jobs.py status
+.\.venv\Scripts\python.exe scripts\process_ingest_jobs.py list --status queued --limit 20
+.\.venv\Scripts\python.exe scripts\process_ingest_jobs.py claim --limit 1 --apply
+```
+
+The first version records a durable `ingest_jobs(status='queued')` handoff after `/api/upload`. A local or background worker can claim jobs and then connect Feishu download, `bp_screener.ingest`, and `scripts\sync_to_d1.py` upsert steps. The script is read-only/dry-run unless `--apply` is passed.
 
 Treat D1 as the source of truth for the hosted system. `scripts/sync_to_d1.py` does not run destructive reset commands by default; production DROP/reset operations require explicit authorization. A full schema reset requires both `--reset-schema` and `--allow-drop`, for example only in a disposable environment:
 

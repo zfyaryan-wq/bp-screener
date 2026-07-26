@@ -681,19 +681,27 @@ async function uploadBp(request, env) {
   }
 
   await ensureUploadDocumentColumns(env);
+  await ensureIngestJobsTable(env);
   const document = await createUploadedDocument(file, feishuFile, env);
+  const ingestJob = await createIngestJob(document, feishuFile, env);
   const warnings = [];
   const bitableResult = await tryCreateBitableRecord(file, feishuFile, request.headers.get("x-bp-user") || "", env);
   if (bitableResult?.warning) {
     warnings.push(bitableResult.warning);
   }
+  const wake = await tryWakeAfterUpload(env);
+  if (wake?.warning) {
+    warnings.push(wake.warning);
+  }
 
   return json({
     ok: true,
     document,
+    ingest_job: ingestJob,
     feishu_file: feishuFile,
+    wake,
     warnings,
-    message: "BP uploaded to Feishu Drive. VRT Agent parsing will run in the downstream ingestion pipeline.",
+    message: "BP uploaded to Feishu Drive and queued for VRT Agent ingestion.",
   });
 }
 
@@ -831,9 +839,19 @@ async function createUploadedDocument(file, feishuFile, env) {
     )
     VALUES (?, ?, ?, 'feishu', ?, 'uploaded', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
   `).bind(file.name, feishuFile.url || "", file.size, feishuFile.token).run();
+  const insertedId = result.meta?.last_row_id || null;
+  const row = insertedId
+    ? null
+    : await env.DB.prepare(`
+        SELECT id
+        FROM documents
+        WHERE source_platform = 'feishu' AND source_external_id = ?
+        ORDER BY id DESC
+        LIMIT 1
+      `).bind(feishuFile.token).first();
 
   return {
-    id: result.meta?.last_row_id || null,
+    id: insertedId || row?.id || null,
     file_name: file.name,
     file_size: file.size,
     source_platform: "feishu",
@@ -843,12 +861,95 @@ async function createUploadedDocument(file, feishuFile, env) {
   };
 }
 
+async function createIngestJob(document, feishuFile, env) {
+  if (!document.id) {
+    throw new Error("Uploaded document id was not returned by D1; cannot queue ingest job.");
+  }
+  const result = await env.DB.prepare(`
+    INSERT INTO ingest_jobs (
+      document_id,
+      source_platform,
+      source_external_id,
+      source_url,
+      status,
+      attempts,
+      error_message,
+      created_at,
+      updated_at,
+      claimed_at,
+      completed_at
+    )
+    VALUES (?, 'feishu', ?, ?, 'queued', 0, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, NULL)
+    ON CONFLICT(document_id) DO UPDATE SET
+      source_platform = excluded.source_platform,
+      source_external_id = excluded.source_external_id,
+      source_url = excluded.source_url,
+      status = CASE
+        WHEN ingest_jobs.status IN ('done', 'processing') THEN ingest_jobs.status
+        ELSE 'queued'
+      END,
+      error_message = NULL,
+      updated_at = CURRENT_TIMESTAMP,
+      claimed_at = CASE
+        WHEN ingest_jobs.status IN ('done', 'processing') THEN ingest_jobs.claimed_at
+        ELSE NULL
+      END,
+      completed_at = CASE
+        WHEN ingest_jobs.status = 'done' THEN ingest_jobs.completed_at
+        ELSE NULL
+      END
+  `).bind(document.id, feishuFile.token, feishuFile.url || "").run();
+
+  const row = await env.DB.prepare(`
+    SELECT id, document_id, source_platform, source_external_id, source_url, status,
+           attempts, error_message, created_at, updated_at, claimed_at, completed_at
+    FROM ingest_jobs
+    WHERE document_id = ?
+  `).bind(document.id).first();
+
+  return row || {
+    id: result.meta?.last_row_id || null,
+    document_id: document.id,
+    source_platform: "feishu",
+    source_external_id: feishuFile.token,
+    source_url: feishuFile.url || "",
+    status: "queued",
+    attempts: 0,
+    error_message: null,
+    claimed_at: null,
+    completed_at: null,
+  };
+}
+
 async function ensureUploadDocumentColumns(env) {
   await addColumnIfMissing(env, "documents", "source_platform", "TEXT NOT NULL DEFAULT ''");
   await addColumnIfMissing(env, "documents", "source_external_id", "TEXT NOT NULL DEFAULT ''");
   await addColumnIfMissing(env, "documents", "status", "TEXT NOT NULL DEFAULT 'new'");
   await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_documents_status_updated ON documents(status, updated_at)").run();
   await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_documents_source_external ON documents(source_platform, source_external_id)").run();
+}
+
+async function ensureIngestJobsTable(env) {
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS ingest_jobs (
+      id INTEGER PRIMARY KEY,
+      document_id INTEGER NOT NULL,
+      source_platform TEXT NOT NULL DEFAULT '',
+      source_external_id TEXT NOT NULL DEFAULT '',
+      source_url TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'queued',
+      attempts INTEGER NOT NULL DEFAULT 0,
+      error_message TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      claimed_at TEXT,
+      completed_at TEXT,
+      UNIQUE(document_id),
+      FOREIGN KEY(document_id) REFERENCES documents(id)
+    )
+  `).run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_ingest_jobs_status_created ON ingest_jobs(status, created_at)").run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_ingest_jobs_document_id ON ingest_jobs(document_id)").run();
 }
 
 async function addColumnIfMissing(env, tableName, columnName, definition) {
@@ -887,6 +988,22 @@ function userFacingError(error) {
     return `${message} Check Feishu app Drive permissions and make sure the app/bot is a collaborator of the target BP folder.`;
   }
   return message;
+}
+
+async function tryWakeAfterUpload(env) {
+  if (String(env.BP_WAKE_ON_UPLOAD || "").toLowerCase() === "false") {
+    return { skipped: true, reason: "BP_WAKE_ON_UPLOAD=false" };
+  }
+  try {
+    const response = await wakeRequest(env);
+    const payload = await response.json().catch(() => ({}));
+    return { ok: true, ...payload };
+  } catch (error) {
+    return {
+      ok: false,
+      warning: `Ingest job was queued, but wake request could not be recorded. ${userFacingError(error)}`,
+    };
+  }
 }
 
 function authorizeWakeAgent(request, env) {

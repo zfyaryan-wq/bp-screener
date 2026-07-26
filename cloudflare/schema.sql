@@ -16,6 +16,7 @@ DROP TABLE IF EXISTS bp_user_scores;
 DROP TABLE IF EXISTS bp_score_drafts;
 DROP TABLE IF EXISTS weight_factors;
 DROP TABLE IF EXISTS projects;
+DROP TABLE IF EXISTS ingest_jobs;
 DROP TABLE IF EXISTS documents;
 
 CREATE TABLE documents (
@@ -28,6 +29,23 @@ CREATE TABLE documents (
   status TEXT NOT NULL DEFAULT 'new',
   created_at TEXT,
   updated_at TEXT
+);
+
+CREATE TABLE ingest_jobs (
+  id INTEGER PRIMARY KEY,
+  document_id INTEGER NOT NULL,
+  source_platform TEXT NOT NULL DEFAULT '',
+  source_external_id TEXT NOT NULL DEFAULT '',
+  source_url TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'queued',
+  attempts INTEGER NOT NULL DEFAULT 0,
+  error_message TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  claimed_at TEXT,
+  completed_at TEXT,
+  UNIQUE(document_id),
+  FOREIGN KEY(document_id) REFERENCES documents(id)
 );
 
 CREATE TABLE projects (
@@ -321,6 +339,8 @@ CREATE INDEX idx_chunks_document_id ON chunks(document_id);
 CREATE INDEX idx_project_translations_lang ON project_translations(lang);
 CREATE INDEX idx_documents_status_updated ON documents(status, updated_at);
 CREATE INDEX idx_documents_source_external ON documents(source_platform, source_external_id);
+CREATE INDEX idx_ingest_jobs_status_created ON ingest_jobs(status, created_at);
+CREATE INDEX idx_ingest_jobs_document_id ON ingest_jobs(document_id);
 CREATE INDEX idx_weight_factors_scope_updated ON weight_factors(scope, updated_at);
 CREATE INDEX idx_weight_factors_owner_updated ON weight_factors(owner, updated_at);
 CREATE INDEX idx_weight_factors_key ON weight_factors(key);
