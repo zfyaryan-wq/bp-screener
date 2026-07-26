@@ -471,19 +471,11 @@ async function verifySessionToken(user, token, secrets) {
     const expected = await hmacSha256(secret, encodedPayload);
     if (!timingSafeEqual(signature, expected)) continue;
     const payload = safeJsonParse(base64UrlDecode(encodedPayload));
-    if (payload.sub !== user) return { ok: false };
-    if (!Number.isFinite(payload.exp) || payload.exp < Math.floor(Date.now() / 1000)) return { ok: false };
+    if (payload?.sub !== user) return { ok: false };
+    if (!Number.isFinite(payload?.exp) || payload.exp < Math.floor(Date.now() / 1000)) return { ok: false };
     return { ok: true };
   }
   return { ok: false };
-}
-
-function safeJsonParse(value) {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return {};
-  }
 }
 
 async function hmacSha256(secret, value) {
