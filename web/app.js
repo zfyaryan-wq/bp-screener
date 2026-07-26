@@ -664,7 +664,7 @@ const labels = {
   },
 };
 
-const AUTH_STATE_VERSION = "20260726-force-login-overlay-v2";
+const AUTH_STATE_VERSION = "20260726-force-login-overlay-v3";
 const AUTH_STATE_VERSION_KEY = "bp-screener-auth-state-version";
 migrateAuthState();
 
@@ -673,6 +673,7 @@ let storedLoginUser = localStorage.getItem("bp-screener-user") || "";
 let currentUser = "";
 let accessCode = "";
 let sessionToken = sessionStorage.getItem("bp-screener-session-token") || "";
+let hasUserConfirmedEntry = false;
 let lastAuthError = "";
 let lastAuthStatus = 0;
 localStorage.removeItem("bp-screener-access-code");
@@ -1067,10 +1068,9 @@ loginForm.addEventListener("submit", async (event) => {
   sessionStorage.setItem("bp-screener-session-token", sessionToken);
   localStorage.removeItem("bp-screener-access-code");
   loginError.textContent = "";
+  hasUserConfirmedEntry = true;
   renderWelcome();
-  if (currentUser && teamMembers.includes(currentUser)) {
-    loginOverlay.classList.add("hidden");
-  }
+  hideLoginOverlayAfterConfirmedEntry();
   await refreshWorkspaceForCurrentUser();
 });
 
@@ -1187,6 +1187,7 @@ function renderWelcome() {
 }
 
 async function refreshWorkspaceForCurrentUser() {
+  if (!hasUserConfirmedEntry || !currentUser || !teamMembers.includes(currentUser)) return;
   await Promise.allSettled([
     loadFilterOptions(),
     loadProjects(),
@@ -1201,6 +1202,7 @@ async function refreshWorkspaceForCurrentUser() {
 }
 
 async function bootstrapWorkspace() {
+  hasUserConfirmedEntry = false;
   currentUser = "";
   renderWelcome();
   loginOverlay.classList.remove("hidden");
@@ -1228,6 +1230,7 @@ function loadNonCriticalWorkspaceData() {
 }
 
 function clearSessionOnly() {
+  hasUserConfirmedEntry = false;
   sessionToken = "";
   accessCode = "";
   sessionStorage.removeItem("bp-screener-session-token");
@@ -1376,6 +1379,11 @@ function renderLoginPrompt() {
     : t("loginButton");
 }
 
+function hideLoginOverlayAfterConfirmedEntry() {
+  if (!hasUserConfirmedEntry || !currentUser || !teamMembers.includes(currentUser)) return;
+  loginOverlay.classList.add("hidden");
+}
+
 function openUserSwitchDialog() {
   if (!userSwitchDialog) return;
   pendingSwitchUser = "";
@@ -1453,6 +1461,7 @@ async function confirmUserSwitch() {
   storedLoginUser = pendingSwitchUser;
   accessCode = "";
   sessionToken = nextSessionToken;
+  hasUserConfirmedEntry = true;
   localStorage.setItem("bp-screener-user", currentUser);
   sessionStorage.setItem("bp-screener-session-token", sessionToken);
   localStorage.removeItem("bp-screener-access-code");
@@ -4190,6 +4199,7 @@ async function apiFetch(url, options = {}) {
     localStorage.removeItem("bp-screener-user");
     localStorage.removeItem("bp-screener-access-code");
     sessionStorage.removeItem("bp-screener-session-token");
+    hasUserConfirmedEntry = false;
     currentUser = "";
     accessCode = "";
     sessionToken = "";
