@@ -1002,6 +1002,9 @@ if (scoringTemplateSelect) {
     activeScoringTemplate = scoringTemplateSelect.value || "type_a";
     localStorage.setItem("bp-scoring-template", activeScoringTemplate);
     loadScoringProfile();
+    loadScoringQueue();
+    refreshSelectedScoreReview();
+    loadProjects();
     renderScoreReviewCard(selectedProject);
   });
 }
@@ -1515,6 +1518,7 @@ async function loadProjects() {
   if (highlightOnlyProjects) params.set("highlightOnly", "true");
   if (hiddenOnlyProjects) params.set("hiddenOnly", "true");
   const sortBy = value("#sortBy");
+  params.set("scoringTemplate", activeScoringTemplate);
   setParam(params, "sortBy", sortBy === "custom_weight" ? "updated_desc" : sortBy);
   if (sortBy === "custom_weight" && activeWeightProfileId) {
     params.set("weightProfileId", String(activeWeightProfileId));
@@ -3270,7 +3274,7 @@ function projectRow(project) {
 }
 
 async function showProject(documentId) {
-  const response = await apiFetch(`/api/projects/${documentId}?lang=${encodeURIComponent(lang)}`);
+  const response = await apiFetch(`/api/projects/${documentId}?lang=${encodeURIComponent(lang)}&scoringTemplate=${encodeURIComponent(activeScoringTemplate)}`);
   if (!response) return;
   const data = await response.json();
   const rankedProject = projects.find((item) => Number(item.document_id) === Number(documentId));
@@ -3484,6 +3488,16 @@ async function saveCurrentFinalScore() {
     await loadScoringProfile();
     await loadScoringQueue();
     renderProjectList();
+  }
+}
+
+async function refreshSelectedScoreReview() {
+  if (!selectedDocumentId || !selectedProject) return;
+  const response = await apiFetch(`/api/projects/${selectedDocumentId}/score-review?template=${encodeURIComponent(activeScoringTemplate)}`);
+  if (!response) return;
+  const data = await response.json().catch(() => ({}));
+  if (data.score_review) {
+    applyScoreReviewToProject(selectedDocumentId, data.score_review);
   }
 }
 

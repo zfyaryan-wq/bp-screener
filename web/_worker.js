@@ -816,6 +816,7 @@ async function listProjects(request, env) {
   const tag = url.searchParams.get("tag");
   const aiRelated = url.searchParams.get("aiRelated");
   const sortBy = url.searchParams.get("sortBy") || "updated_desc";
+  const scoringTemplate = normalizeScoringTemplate(url.searchParams.get("scoringTemplate"));
   const weightProfileId = Number(url.searchParams.get("weightProfileId") || 0);
   const aiOnly = url.searchParams.get("aiOnly") === "true";
   const actor = request.headers.get("x-bp-user") || "";
@@ -928,7 +929,7 @@ async function listProjects(request, env) {
   if (profile) {
     projects = rankProjectsByProfile(projects, profile).slice(0, 200);
   }
-  await attachPersonalScoring(projects, actor, env);
+  await attachPersonalScoring(projects, actor, env, scoringTemplate);
   if (usesPersonalScoringSort) {
     projects = sortProjectsByPersonalScoring(projects).slice(0, 200);
   }
@@ -1290,7 +1291,9 @@ function projectOrderBy(sortBy) {
 
 async function getProject(request, id, env) {
   const documentId = Number(id);
-  const lang = localizedLang(new URL(request.url).searchParams.get("lang"));
+  const url = new URL(request.url);
+  const lang = localizedLang(url.searchParams.get("lang"));
+  const scoringTemplate = normalizeScoringTemplate(url.searchParams.get("scoringTemplate"));
   if (!Number.isFinite(documentId)) {
     return json({ error: "Invalid project id" }, 400);
   }
@@ -1317,7 +1320,7 @@ async function getProject(request, id, env) {
 
   const actor = request.headers.get("x-bp-user") || "";
   const normalized = normalizeProject(project);
-  await attachPersonalScoring([normalized], actor, env);
+  await attachPersonalScoring([normalized], actor, env, scoringTemplate);
   await attachProjectCollaboration([normalized], env, lang, actor);
   return json({ project: normalized, chunks: chunks.results || [] });
 }
@@ -1400,7 +1403,7 @@ async function generateScoreDraft(request, env) {
     profile_id: profile?.id || profileId || null,
     draft,
   });
-  const review = await getPersonalScoreReview(documentId, actor, env);
+  const review = await getPersonalScoreReview(documentId, actor, env, templateKey);
   return json({ draft: review.draft, score_review: review, warning: draft.warning || "" }, 201);
 }
 
@@ -1409,7 +1412,8 @@ async function projectScoreReview(request, documentId, env) {
   await ensureScoringTables(env);
   const actor = request.headers.get("x-bp-user") || "";
   if (request.method === "GET") {
-    return json({ score_review: await getPersonalScoreReview(documentId, actor, env) });
+    const templateKey = normalizeScoringTemplate(new URL(request.url).searchParams.get("template"));
+    return json({ score_review: await getPersonalScoreReview(documentId, actor, env, templateKey) });
   }
   if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
   const body = await request.json().catch(() => ({}));
@@ -1447,7 +1451,7 @@ async function projectScoreReview(request, documentId, env) {
     adjustmentReason,
     JSON.stringify(dimensions),
   ).run();
-  return json({ score_review: await getPersonalScoreReview(documentId, actor, env) });
+  return json({ score_review: await getPersonalScoreReview(documentId, actor, env, templateKey) });
 }
 
 async function projectContext(request, documentId, env) {
@@ -4706,20 +4710,21 @@ async function ensureScoringTables(env) {
   await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_bp_user_scores_actor_updated ON bp_user_scores(actor, updated_at)").run();
 }
 
-async function attachPersonalScoring(projects, actor, env) {
+async function attachPersonalScoring(projects, actor, env, templateKey = "type_a") {
   if (!projects?.length || !actor) return;
   await ensureScoringTables(env);
+  const template = normalizeScoringTemplate(templateKey);
   const ids = projects.map((project) => Number(project.document_id)).filter((id) => Number.isFinite(id) && id > 0);
   if (!ids.length) return;
   const placeholders = ids.map(() => "?").join(",");
   const scores = await env.DB.prepare(`
     SELECT * FROM bp_user_scores
-    WHERE actor = ? AND document_id IN (${placeholders})
-  `).bind(actor, ...ids).all();
+    WHERE actor = ? AND template_key = ? AND document_id IN (${placeholders})
+  `).bind(actor, template, ...ids).all();
   const drafts = await env.DB.prepare(`
     SELECT * FROM bp_score_drafts
-    WHERE actor = ? AND document_id IN (${placeholders})
-  `).bind(actor, ...ids).all();
+    WHERE actor = ? AND template_key = ? AND document_id IN (${placeholders})
+  `).bind(actor, template, ...ids).all();
   const scoreByDocument = new Map((scores.results || []).map((row) => [Number(row.document_id), normalizeUserScore(row)]));
   const draftByDocument = new Map((drafts.results || []).map((row) => [Number(row.document_id), normalizeScoreDraft(row)]));
   for (const project of projects) {
@@ -4743,20 +4748,21 @@ function sortProjectsByPersonalScoring(projects = []) {
   });
 }
 
-async function getPersonalScoreReview(documentId, actor, env) {
+async function getPersonalScoreReview(documentId, actor, env, templateKey = "") {
   await ensureScoringTables(env);
+  const template = normalizeScoringTemplate(templateKey);
   const score = await env.DB.prepare(`
     SELECT * FROM bp_user_scores
-    WHERE document_id = ? AND actor = ?
+    WHERE document_id = ? AND actor = ? AND template_key = ?
     ORDER BY updated_at DESC
     LIMIT 1
-  `).bind(documentId, actor).first();
+  `).bind(documentId, actor, template).first();
   const draft = await env.DB.prepare(`
     SELECT * FROM bp_score_drafts
-    WHERE document_id = ? AND actor = ?
+    WHERE document_id = ? AND actor = ? AND template_key = ?
     ORDER BY updated_at DESC
     LIMIT 1
-  `).bind(documentId, actor).first();
+  `).bind(documentId, actor, template).first();
   return {
     draft: normalizeScoreDraft(draft),
     user_score: normalizeUserScore(score),
