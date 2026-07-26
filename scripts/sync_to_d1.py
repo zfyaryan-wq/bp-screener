@@ -30,7 +30,7 @@ def quote(value: object) -> str:
 
 def row_insert(table: str, columns: list[str], row: sqlite3.Row) -> str:
     values = ", ".join(quote(row[column]) for column in columns)
-    return f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({values});"
+    return f"INSERT OR REPLACE INTO {table} ({', '.join(columns)}) VALUES ({values});"
 
 
 def object_key(document_id: int, file_name: str) -> str:
@@ -45,6 +45,8 @@ def export_seed(
     max_chunks: int,
     include_transaction: bool = False,
     include_file_keys: bool = False,
+    include_schema: bool = False,
+    allow_drop: bool = False,
 ) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(local_db)
@@ -108,7 +110,13 @@ def export_seed(
     ]
 
     with output_path.open("w", encoding="utf-8") as handle:
-        handle.write(schema_path.read_text(encoding="utf-8"))
+        if include_schema:
+            schema_sql = schema_path.read_text(encoding="utf-8")
+            if "DROP TABLE" in schema_sql.upper() and not allow_drop:
+                schema_sql = "\n".join(
+                    line for line in schema_sql.splitlines() if not line.lstrip().upper().startswith("DROP TABLE")
+                )
+            handle.write(schema_sql.rstrip() + "\n\n")
         if include_transaction:
             handle.write("\n\nBEGIN TRANSACTION;\n")
 
@@ -189,9 +197,14 @@ def main() -> None:
     parser.add_argument("--max-chunks", type=int, default=5000)
     parser.add_argument("--include-transaction", action="store_true")
     parser.add_argument("--include-file-keys", action="store_true", help="Write deterministic R2 object keys into source_url.")
+    parser.add_argument("--include-schema", action="store_true", help="Include schema DDL without DROP TABLE lines.")
+    parser.add_argument("--reset-schema", action="store_true", help="Include the full schema file, including destructive DROP TABLE lines.")
+    parser.add_argument("--allow-drop", action="store_true", help="Required with --reset-schema and --execute to run DROP TABLE statements.")
     parser.add_argument("--execute", action="store_true", help="Run wrangler d1 execute after exporting.")
     parser.add_argument("--database", default="bp-screener", help="Cloudflare D1 database name.")
     args = parser.parse_args()
+    if args.reset_schema and not args.allow_drop:
+        parser.error("--reset-schema is destructive and requires --allow-drop.")
 
     export_seed(
         args.local_db,
@@ -200,10 +213,15 @@ def main() -> None:
         args.max_chunks,
         args.include_transaction,
         args.include_file_keys,
+        include_schema=args.include_schema or args.reset_schema,
+        allow_drop=args.allow_drop and args.reset_schema,
     )
     print(f"Exported D1 seed SQL to {args.output}")
 
     if args.execute:
+        output_sql = args.output.read_text(encoding="utf-8")
+        if "DROP TABLE" in output_sql.upper() and not args.allow_drop:
+            raise SystemExit("Refusing to execute SQL containing DROP TABLE without --allow-drop.")
         execute_seed(args.database, args.output)
 
 

@@ -8,7 +8,7 @@ BP Screener Workbench is a lightweight shared workspace for a student team revie
 
 The project turns raw business plans and pitch decks into a searchable, filterable project library. A small team can upload files, run automatic analysis, and get structured profiles for each startup: industry, AI relevance, financing stage, business model, team highlights, traction, risks, recommendation level, tags, and evidence snippets.
 
-It is intentionally small, low-cost, and easy for four collaborators to use. The current version uses local files, SQLite, SQLite FTS, Streamlit, and SiliconFlow's OpenAI-compatible DeepSeek endpoint. Cloud storage can be added later by syncing files into the inbox directory or pointing the ingestion pipeline at a mounted cloud-drive folder.
+It is intentionally small, low-cost, and easy for a five-person team to use. The hosted version uses Cloudflare Pages, a Pages Worker, D1 as the primary application database, and Feishu Drive as the original BP file repository. The Python/Streamlit path remains useful for local ingestion and legacy development.
 
 ## Features
 
@@ -16,9 +16,10 @@ It is intentionally small, low-cost, and easy for four collaborators to use. The
 - Fast PyMuPDF-based PDF text extraction with `pypdf` fallback available
 - Optional local OCR fallback for scanned PDFs
 - LLM-powered structured extraction through SiliconFlow, DeepSeek, or any OpenAI-compatible endpoint
-- Local SQLite project database
+- Cloudflare D1 project database for the hosted app
+- Local SQLite for ingestion, development, and export staging
 - SQLite FTS keyword search over extracted document chunks
-- Streamlit workbench for upload, automatic analysis, search, filtering, detail view, project discussion, and export
+- Cloudflare web workbench for upload, automatic analysis, search, filtering, detail view, project discussion, and export
 - Shopping-style project library filters and sorting for country/region, customer type, revenue stage, risk level, screening score, team score, and traction score
 - Evidence-first project profiles with source snippets when the model provides them
 - Storage-agnostic design for Feishu Drive, OneDrive, OSS, COS, or local folders
@@ -27,29 +28,30 @@ It is intentionally small, low-cost, and easy for four collaborators to use. The
 
 ```mermaid
 flowchart LR
-    A[Pitch Deck Files] --> B[Inbox Folder]
+    A[Pitch Deck Files] --> B[Feishu Drive / Local Inbox]
     B --> C[Ingestion Pipeline]
     C --> D[Document Parsers]
     D --> E[Text Pages and Chunks]
     E --> F[LLM Extractor]
-    E --> G[SQLite FTS Index]
+    E --> G[Local SQLite / FTS Staging]
     F --> H[Structured Project Profiles]
-    H --> I[SQLite Database]
-    G --> J[Search Service]
-    I --> J
-    J --> K[Streamlit Web App]
-    I --> K
-    K --> L[CSV Export]
+    H --> I[Cloudflare D1 Primary DB]
+    G --> I
+    I --> J[Pages Worker API]
+    J --> K[Cloudflare Pages Web App]
+    K --> L[Team Review Workflow]
 
     M[SiliconFlow / DeepSeek] --> F
-    N[Future Cloud Storage] -. sync or download .-> B
+    N[VRT Agent] -. recommends, summarizes, drafts .-> J
 ```
 
 ## Repository Layout
 
 ```text
 bp-screener/
-  app.py                    # Streamlit web app
+  app.py                    # Legacy/local Streamlit app
+  web/                      # Cloudflare Pages frontend and Worker
+  cloudflare/schema.sql     # D1 schema
   bp_screener/
     config.py               # Runtime configuration
     db.py                   # SQLite schema and persistence helpers
@@ -58,7 +60,7 @@ bp-screener/
     parsers.py              # PDF, PPTX, DOCX, TXT, and MD parsing
     search.py               # Keyword search and structured filters
   data/
-    inbox/                  # Local file inbox; replaceable with a synced cloud folder
+    inbox/                  # Local ingestion inbox; do not commit generated data
 ```
 
 ## Setup
@@ -249,11 +251,11 @@ Running `sync` repeatedly updates the same Notion pages instead of creating dupl
 This repository includes a Cloudflare-ready web layer:
 
 - `web/`: static frontend for Cloudflare Pages
-- `web/functions/api/`: Pages Functions API
-- `web/_worker.js`: password-gated API and static asset worker
+- `web/_worker.js`: API, session auth, wake proxy, and static asset worker
 - `cloudflare/schema.sql`: D1 schema
 - `scripts/sync_to_d1.py`: export local SQLite results into D1 import SQL
 - `wrangler.toml`: Pages + D1 binding template
+- `docs/architecture-runbook.md`: production data and operational guardrails
 
 Configure local preview credentials:
 
@@ -261,10 +263,10 @@ Configure local preview credentials:
 copy .dev.vars.example .dev.vars
 ```
 
-Edit `.dev.vars` and set the shared access password:
+Edit `.dev.vars` and set per-member bootstrap access codes:
 
 ```env
-APP_PASSWORD=123456
+BP_ACCESS_CODES={"Alzamora Quan":"replace-me","Gary Wang":"replace-me","brody":"replace-me","Luca Viscapi":"replace-me","Frank Zhang":"replace-me"}
 ```
 
 Do not commit `.dev.vars`. It is ignored by Git.
@@ -281,11 +283,17 @@ Copy the returned `database_id` into `wrangler.toml`, then initialize the databa
 npx wrangler d1 execute bp-screener --remote --file cloudflare/schema.sql
 ```
 
-After local ingestion has produced `data/bp_screener.sqlite`, export data for D1:
+After local ingestion has produced `data/bp_screener.sqlite`, export data-only upserts for D1:
 
 ```powershell
 python scripts\sync_to_d1.py
 npx wrangler d1 execute bp-screener --remote --file data\d1_seed.sql
+```
+
+Do not run destructive schema seed/reset commands against production. A full schema reset now requires both `--reset-schema` and `--allow-drop`, for example only in a disposable environment:
+
+```powershell
+python scripts\sync_to_d1.py --reset-schema --allow-drop --execute
 ```
 
 Deploy the Pages site:
@@ -294,20 +302,20 @@ Deploy the Pages site:
 npx wrangler pages deploy web --project-name bp-screener
 ```
 
-After creating the Cloudflare Pages project, add the production password:
+After creating the Cloudflare Pages project, add the production access-code configuration:
 
 ```powershell
-npx wrangler pages secret put APP_PASSWORD --project-name bp-screener
+npx wrangler pages secret put BP_ACCESS_CODES --project-name bp-screener
 ```
 
-If `APP_PASSWORD` is missing, API requests return `500` instead of exposing data publicly. The static page can load, but project data remains protected.
+If `BP_ACCESS_CODES` and personal D1 access codes are missing, sensitive API requests return an explicit configuration error instead of trusting `x-bp-user`. The static page can load, but project data, `/api/wake/*`, and `/workbench` remain protected.
 
 You need to provide:
 
 - A Cloudflare account
 - Wrangler login via `npx wrangler login`
 - A D1 database ID for `wrangler.toml`
-- A shared access password for the web page
+- Per-member access codes for the five team users
 - Optional custom domain configuration in Cloudflare Pages
 
 ## Current Limitations

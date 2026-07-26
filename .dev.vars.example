@@ -1,4 +1,5 @@
-APP_PASSWORD=123456
+BP_ACCESS_CODES={"Alzamora Quan":"replace-me","Gary Wang":"replace-me","brody":"replace-me","Luca Viscapi":"replace-me","Frank Zhang":"replace-me"}
+WAKE_TOKEN=replace-with-local-wake-agent-token
 FEISHU_APP_ID=
 FEISHU_APP_SECRET=
 FEISHU_BP_FOLDER_TOKEN=

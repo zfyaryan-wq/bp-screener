@@ -6,9 +6,13 @@ export default {
       return await accountAccessCodeStatus(env);
     }
     if (url.pathname === "/api/account/me") {
-      const auth = await authorizeApi(request, env);
-      if (auth) return auth;
-      return json({ ok: true });
+      const auth = await authenticateRequest(request, env);
+      if (auth.error) return auth.error;
+      return json(
+        { ok: true, session_token: auth.sessionToken || "", expires_in: SESSION_TTL_SECONDS },
+        200,
+        sessionCookieHeaders(auth.sessionToken),
+      );
     }
     if (url.pathname === "/api/account/access-code") {
       return await accountAccessCodeAction(request, env);
@@ -19,9 +23,13 @@ export default {
       return await uploadBp(request, env);
     }
     if (url.pathname === "/api/wake/status") {
+      const auth = await authorizeApi(request, env);
+      if (auth) return auth;
       return await wakeStatus(env);
     }
     if (url.pathname === "/api/wake/request") {
+      const auth = await authorizeApi(request, env);
+      if (auth) return auth;
       return await wakeRequest(env);
     }
     if (url.pathname === "/api/wake/heartbeat") {
@@ -30,6 +38,8 @@ export default {
       return await wakeHeartbeat(request, env);
     }
     if (isWorkbenchProxyPath(url.pathname)) {
+      const auth = await authorizeApi(request, env);
+      if (auth) return auth;
       return await proxyWorkbench(request, env);
     }
     if (url.pathname === "/api/filter-options") {
@@ -311,28 +321,51 @@ async function proxyWorkbench(request, env) {
   return fetch(new Request(targetUrl.toString(), request));
 }
 
+const SESSION_TTL_SECONDS = 8 * 60 * 60;
+
 async function authorizeApi(request, env) {
+  const auth = await authenticateRequest(request, env);
+  return auth.error || null;
+}
+
+async function authenticateRequest(request, env) {
   const allowedUsers = new Set(TEAM_MEMBERS);
   const user = request.headers.get("x-bp-user") || "";
   if (!allowedUsers.has(user)) {
-    return json({ error: "Choose a valid team member." }, 401);
+    return { error: json({ error: "Choose a valid team member." }, 401) };
   }
 
   const configuredCodes = parseAccessCodeConfig(env);
-  const expectedCode = configuredCodes[user];
-  const providedCode = request.headers.get("x-bp-access-code") || bearerToken(request);
-  if (expectedCode && timingSafeEqual(String(providedCode || ""), String(expectedCode))) {
-    return null;
+  const expectedCode = configuredCodes[user] ? String(configuredCodes[user]) : "";
+  const storedCode = await getStoredAccessCode(user, env);
+  const sessionToken = request.headers.get("x-bp-session-token") || cookieValue(request, "bp_session") || "";
+  if (sessionToken) {
+    const session = await verifySessionToken(user, sessionToken, sessionSecretsFor(user, expectedCode, storedCode));
+    if (session.ok) return { user, sessionToken };
   }
 
-  const storedCode = await getStoredAccessCode(user, env);
+  const providedCode = request.headers.get("x-bp-access-code") || bearerToken(request);
+  if (expectedCode && timingSafeEqual(String(providedCode || ""), String(expectedCode))) {
+    return { user, sessionToken: await createSessionToken(user, expectedCode) };
+  }
+
   if (!storedCode) {
-    return expectedCode ? json({ error: "Invalid access code for this team member." }, 401) : null;
+    if (expectedCode) {
+      return { error: json({ error: "Invalid access code for this team member." }, 401) };
+    }
+    return {
+      error: json(
+        {
+          error: "Access code is not configured for this team member. Configure BP_ACCESS_CODES or set a personal access code through an authenticated bootstrap flow.",
+        },
+        503,
+      ),
+    };
   }
   if (providedCode && (await verifyStoredAccessCode(user, providedCode, storedCode))) {
-    return null;
+    return { user, sessionToken: await createSessionToken(user, storedCode.code_hash) };
   }
-  return json({ error: "Invalid access code for this team member." }, 401);
+  return { error: json({ error: "Invalid access code for this team member." }, 401) };
 }
 
 async function accountAccessCodeStatus(env) {
@@ -376,6 +409,10 @@ async function accountAccessCodeAction(request, env) {
   } else {
     const legacyCode = parseAccessCodeConfig(env)[actor];
     const providedCode = request.headers.get("x-bp-access-code") || bearerToken(request) || oldCode;
+    const bootstrapAllowed = env.BP_ALLOW_ACCESS_CODE_BOOTSTRAP === "true";
+    if (!legacyCode && !bootstrapAllowed) {
+      return json({ error: "Initial access code setup requires BP_ACCESS_CODES or BP_ALLOW_ACCESS_CODE_BOOTSTRAP=true." }, 503);
+    }
     if (legacyCode && !timingSafeEqual(String(providedCode || ""), String(legacyCode))) {
       return json({ error: "Invalid access code for this team member." }, 401);
     }
@@ -391,7 +428,12 @@ async function accountAccessCodeAction(request, env) {
       code_hash = excluded.code_hash,
       updated_at = CURRENT_TIMESTAMP
   `).bind(actor, salt, codeHash).run();
-  return json({ ok: true, actor, has_access_code: true });
+  const sessionToken = await createSessionToken(actor, codeHash);
+  return json(
+    { ok: true, actor, has_access_code: true, session_token: sessionToken, expires_in: SESSION_TTL_SECONDS },
+    200,
+    sessionCookieHeaders(sessionToken),
+  );
 }
 
 async function ensureAccountAccessCodeTable(env) {
@@ -448,6 +490,75 @@ function parseAccessCodeConfig(env) {
 function bearerToken(request) {
   const auth = request.headers.get("authorization") || "";
   return auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : "";
+}
+
+function cookieValue(request, name) {
+  const cookie = request.headers.get("cookie") || "";
+  const prefix = `${name}=`;
+  return cookie
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(prefix))
+    ?.slice(prefix.length) || "";
+}
+
+function sessionCookieHeaders(token) {
+  if (!token) return {};
+  return {
+    "set-cookie": `bp_session=${token}; Path=/; Max-Age=${SESSION_TTL_SECONDS}; HttpOnly; SameSite=Lax`,
+  };
+}
+
+function sessionSecretsFor(user, expectedCode, storedCode) {
+  return [expectedCode, storedCode?.code_hash].filter(Boolean).map((secret) => `${user}:${secret}`);
+}
+
+async function createSessionToken(user, secret) {
+  const payload = {
+    sub: user,
+    exp: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS,
+    nonce: randomHex(8),
+  };
+  const encodedPayload = base64UrlEncode(JSON.stringify(payload));
+  const signature = await hmacSha256(`${user}:${secret}`, encodedPayload);
+  return `v1.${encodedPayload}.${signature}`;
+}
+
+async function verifySessionToken(user, token, secrets) {
+  const parts = String(token || "").split(".");
+  if (parts.length !== 3 || parts[0] !== "v1" || !secrets.length) return { ok: false };
+  const [, encodedPayload, signature] = parts;
+  for (const secret of secrets) {
+    const expected = await hmacSha256(secret, encodedPayload);
+    if (!timingSafeEqual(signature, expected)) continue;
+    const payload = JSON.parse(base64UrlDecode(encodedPayload));
+    if (payload.sub !== user) return { ok: false };
+    if (!Number.isFinite(payload.exp) || payload.exp < Math.floor(Date.now() / 1000)) return { ok: false };
+    return { ok: true };
+  }
+  return { ok: false };
+}
+
+async function hmacSha256(secret, value) {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(value));
+  return bytesToHex(new Uint8Array(signature));
+}
+
+function base64UrlEncode(value) {
+  return btoa(value).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function base64UrlDecode(value) {
+  const padded = `${value}${"=".repeat((4 - (value.length % 4)) % 4)}`;
+  return atob(padded.replace(/-/g, "+").replace(/_/g, "/"));
 }
 
 const ALLOWED_BP_EXTENSIONS = new Set(["pdf", "ppt", "pptx", "doc", "docx"]);
@@ -779,9 +890,9 @@ function userFacingError(error) {
 }
 
 function authorizeWakeAgent(request, env) {
-  const expectedToken = env.WAKE_TOKEN || env.APP_PASSWORD || env.BASIC_AUTH_PASSWORD;
+  const expectedToken = env.WAKE_TOKEN;
   if (!expectedToken) {
-    return json({ error: "WAKE_TOKEN or APP_PASSWORD is not configured." }, 500);
+    return json({ error: "WAKE_TOKEN is not configured." }, 500);
   }
   const token = request.headers.get("x-wake-token") || "";
   if (timingSafeEqual(token, expectedToken)) {
@@ -5092,12 +5203,13 @@ function likeTerm(value) {
   return `%${String(value || "").trim()}%`;
 }
 
-function json(data, status = 200) {
+function json(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
+      ...extraHeaders,
     },
   });
 }

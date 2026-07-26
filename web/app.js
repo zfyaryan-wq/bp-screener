@@ -663,6 +663,7 @@ const labels = {
 let lang = localStorage.getItem("bp-screener-lang") || "en";
 let currentUser = localStorage.getItem("bp-screener-user") || "";
 let accessCode = "";
+let sessionToken = sessionStorage.getItem("bp-screener-session-token") || "";
 localStorage.removeItem("bp-screener-access-code");
 let projects = [];
 let defaultFactors = [];
@@ -1035,19 +1036,17 @@ loginForm.addEventListener("submit", async (event) => {
     return;
   }
   const providedCode = accessCodeInput?.value.trim() || "";
-  const verified = await verifyAccountAccess(selectedUser, providedCode, loginForm, accessCodeInput);
-  if (!verified) {
+  const nextSessionToken = await verifyAccountAccess(selectedUser, providedCode, loginForm, accessCodeInput);
+  if (!nextSessionToken) {
     loginError.textContent = t("invalidAccessCode");
     return;
   }
   currentUser = selectedUser;
-  accessCode = providedCode;
+  accessCode = "";
+  sessionToken = nextSessionToken;
   localStorage.setItem("bp-screener-user", currentUser);
-  if (accessCode) {
-    localStorage.setItem("bp-screener-access-code", accessCode);
-  } else {
-    localStorage.removeItem("bp-screener-access-code");
-  }
+  sessionStorage.setItem("bp-screener-session-token", sessionToken);
+  localStorage.removeItem("bp-screener-access-code");
   loginError.textContent = "";
   renderWelcome();
   if (currentUser && teamMembers.includes(currentUser)) {
@@ -1059,20 +1058,7 @@ loginForm.addEventListener("submit", async (event) => {
 applyLanguage();
 loadAccessCodeStatus();
 setLeftRailView(leftRailMode === "calendar" ? "calendar" : "workspace");
-if (currentUser && teamMembers.includes(currentUser)) {
-  userSelect.value = currentUser;
-  renderLoginMemberAvatars();
-  loginOverlay.classList.add("hidden");
-  renderWelcome();
-  loadFilterOptions();
-  loadWeightProfiles();
-  loadScoringProfile();
-  loadScoringQueue();
-  loadProjects();
-  loadReviewBoard();
-} else {
-  userSelect.focus();
-}
+bootstrapWorkspace();
 
 function t(key) {
   return labels[lang][key] || key;
@@ -1181,12 +1167,51 @@ function renderWelcome() {
 }
 
 async function refreshWorkspaceForCurrentUser() {
-  await loadFilterOptions();
-  await loadWeightProfiles();
-  await loadScoringProfile();
-  await loadScoringQueue();
-  await loadProjects();
-  await loadReviewBoard();
+  await Promise.allSettled([
+    loadFilterOptions(),
+    loadWeightProfiles(),
+    loadScoringProfile(),
+    loadProjects(),
+  ]);
+  loadNonCriticalWorkspaceData();
+}
+
+async function bootstrapWorkspace() {
+  if (!currentUser || !teamMembers.includes(currentUser) || !sessionToken) {
+    clearSessionOnly();
+    userSelect.focus();
+    return;
+  }
+  userSelect.value = currentUser;
+  renderLoginMemberAvatars();
+  const verifiedSession = await verifyAccountAccess(currentUser, "", null, null);
+  if (!verifiedSession) {
+    clearSessionOnly();
+    loginOverlay.classList.remove("hidden");
+    userSelect.focus();
+    return;
+  }
+  sessionToken = verifiedSession;
+  sessionStorage.setItem("bp-screener-session-token", sessionToken);
+  loginOverlay.classList.add("hidden");
+  renderWelcome();
+  await refreshWorkspaceForCurrentUser();
+}
+
+function loadNonCriticalWorkspaceData() {
+  window.setTimeout(() => {
+    Promise.allSettled([
+      loadScoringQueue(),
+      loadReviewBoard(),
+    ]);
+  }, 0);
+}
+
+function clearSessionOnly() {
+  sessionToken = "";
+  accessCode = "";
+  sessionStorage.removeItem("bp-screener-session-token");
+  localStorage.removeItem("bp-screener-access-code");
 }
 
 async function loadAccessCodeStatus() {
@@ -1202,12 +1227,16 @@ async function verifyAccountAccess(user, code, errorContainer, errorInput) {
       "x-bp-user": user,
       "x-bp-timezone": userTimezone,
       "x-bp-locale": currentLocale(),
+      ...(sessionToken && user === currentUser ? { "x-bp-session-token": sessionToken } : {}),
       ...(code ? { "x-bp-access-code": code } : {}),
     },
   }).catch(() => null);
-  if (response?.ok) return true;
-  triggerAuthError(errorContainer, errorInput);
-  return false;
+  if (response?.ok) {
+    const data = await response.json().catch(() => ({}));
+    return data.session_token || sessionToken || "";
+  }
+  if (errorContainer || errorInput) triggerAuthError(errorContainer, errorInput);
+  return "";
 }
 
 function triggerAuthError(container, input) {
@@ -1251,8 +1280,11 @@ async function savePersonalAccessCode() {
     triggerAuthError(oldAccessCodeInput, oldAccessCodeInput);
     return;
   }
-  accessCode = newCode;
-  localStorage.setItem("bp-screener-access-code", accessCode);
+  const data = await response.json().catch(() => ({}));
+  accessCode = "";
+  sessionToken = data.session_token || sessionToken;
+  if (sessionToken) sessionStorage.setItem("bp-screener-session-token", sessionToken);
+  localStorage.removeItem("bp-screener-access-code");
   accountAccessCodeStatus[currentUser] = true;
   [oldAccessCodeInput, newAccessCodeInput, confirmNewAccessCodeInput].forEach((input) => {
     if (input) input.value = "";
@@ -1364,18 +1396,16 @@ async function confirmUserSwitch() {
     return;
   }
   const nextAccessCode = switchAccessCodeInput?.value.trim() || "";
-  const verified = await verifyAccountAccess(pendingSwitchUser, nextAccessCode, userSwitchConfirm, switchAccessCodeInput);
-  if (!verified) return;
+  const nextSessionToken = await verifyAccountAccess(pendingSwitchUser, nextAccessCode, userSwitchConfirm, switchAccessCodeInput);
+  if (!nextSessionToken) return;
   currentUser = pendingSwitchUser;
-  accessCode = nextAccessCode;
+  accessCode = "";
+  sessionToken = nextSessionToken;
   localStorage.setItem("bp-screener-user", currentUser);
-  if (accessCode) {
-    localStorage.setItem("bp-screener-access-code", accessCode);
-  } else {
-    localStorage.removeItem("bp-screener-access-code");
-  }
+  sessionStorage.setItem("bp-screener-session-token", sessionToken);
+  localStorage.removeItem("bp-screener-access-code");
   if (userSelect) userSelect.value = currentUser;
-  if (accessCodeInput) accessCodeInput.value = accessCode;
+  if (accessCodeInput) accessCodeInput.value = "";
   renderLoginMemberAvatars();
   renderWelcome();
   closeUserSwitchDialog();
@@ -4101,8 +4131,10 @@ async function apiFetch(url, options = {}) {
     const errorPayload = await response.clone().json().catch(() => ({}));
     localStorage.removeItem("bp-screener-user");
     localStorage.removeItem("bp-screener-access-code");
+    sessionStorage.removeItem("bp-screener-session-token");
     currentUser = "";
     accessCode = "";
+    sessionToken = "";
     if (accessCodeInput) accessCodeInput.value = "";
     loginOverlay.classList.remove("hidden");
     loginError.textContent = errorPayload.error || t("invalidAccessCode");
@@ -4118,6 +4150,7 @@ function authHeaders() {
     "x-bp-user": currentUser,
     "x-bp-timezone": userTimezone,
     "x-bp-locale": currentLocale(),
+    ...(sessionToken ? { "x-bp-session-token": sessionToken } : {}),
     ...(accessCode ? { "x-bp-access-code": accessCode } : {}),
   };
 }

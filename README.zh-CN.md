@@ -8,7 +8,7 @@ BP Screener 是一套轻量级 BP / 商业计划书筛选工具，适合学生�
 
 本项目会把原始 BP 和 Pitch Deck 转换成可搜索、可筛选的结构化项目库。用户可以上传文件，或把云盘文件同步到本地入口目录，然后运行批处理流程，自动生成每个项目的结构化档案，包括行业、是否 AI 相关、融资阶段、商业模式、团队亮点、当前进展、风险、推荐等级、标签和证据片段。
 
-它的设计目标是低成本、低门槛，并且不绑定具体存储。当前版本使用本地文件、SQLite、SQLite FTS、Streamlit，以及硅基流动的 OpenAI-compatible DeepSeek 模型接口。后续可以通过同步文件夹、云盘挂载或对象存储下载脚本接入飞书云盘、OneDrive、OSS、COS 等存储。
+它的设计目标是低成本、低门槛，服务 5 人小团队。线上版本使用 Cloudflare Pages、Pages Worker、D1 主数据库，并把飞书云盘作为 BP 原文件仓库；Python/Streamlit 路径主要保留给本地导入和遗留开发。
 
 ## 功能
 
@@ -16,9 +16,10 @@ BP Screener 是一套轻量级 BP / 商业计划书筛选工具，适合学生�
 - 使用 PyMuPDF 做快速 PDF 文本抽取，并可配置 `pypdf` 兜底
 - 支持对扫描版 PDF 做可选本地 OCR 兜底
 - 支持通过硅基流动、DeepSeek 或其他 OpenAI-compatible 接口做结构化字段抽取
-- 使用本地 SQLite 保存项目档案
+- 线上应用使用 Cloudflare D1 保存项目档案和团队协作状态
+- 本地 SQLite 用于导入、开发和导出中转
 - 使用 SQLite FTS 对文档片段做关键词全文检索
-- 提供 Streamlit Web 界面，支持上传、处理、搜索、筛选、详情查看和 CSV 导出
+- 提供 Cloudflare Web 工作台，支持上传、处理、搜索、筛选、详情查看和团队评审
 - 项目库支持类似电商列表的多条件筛选和排序：国家/地区、客户类型、收入阶段、风险等级、综合筛选分、团队分、进展分等
 - 优先保留证据片段，便于回看模型判断依据
 - 存储层无绑定，可对接飞书云盘、OneDrive、OSS、COS 或本地文件夹
@@ -27,29 +28,30 @@ BP Screener 是一套轻量级 BP / 商业计划书筛选工具，适合学生�
 
 ```mermaid
 flowchart LR
-    A[BP 文件] --> B[入口目录]
+    A[BP 文件] --> B[飞书云盘 / 本地入口目录]
     B --> C[导入管道]
     C --> D[文档解析]
     D --> E[文本页与片段]
     E --> F[模型抽取]
-    E --> G[SQLite 全文索引]
+    E --> G[本地 SQLite / FTS 中转]
     F --> H[结构化项目档案]
-    H --> I[SQLite 数据库]
-    G --> J[检索服务]
-    I --> J
-    J --> K[Streamlit Web 界面]
-    I --> K
-    K --> L[CSV 导出]
+    H --> I[Cloudflare D1 主库]
+    G --> I
+    I --> J[Pages Worker API]
+    J --> K[Cloudflare Pages Web 工作台]
+    K --> L[团队评审流程]
 
     M[硅基流动 / DeepSeek] --> F
-    N[后续云存储] -. 同步或下载 .-> B
+    N[VRT Agent] -. 推荐、总结、生成草稿 .-> J
 ```
 
 ## 目录结构
 
 ```text
 bp-screener/
-  app.py                    # Web 界面
+  app.py                    # 遗留/本地 Streamlit 界面
+  web/                      # Cloudflare Pages 前端和 Worker
+  cloudflare/schema.sql     # D1 数据表结构
   bp_screener/
     config.py               # 运行配置
     db.py                   # 数据库结构与写入
@@ -58,7 +60,7 @@ bp-screener/
     parsers.py              # 文档解析
     search.py               # 检索与筛选
   data/
-    inbox/                  # 本地入口目录，后续可替换为云盘同步目录
+    inbox/                  # 本地导入入口；不要提交生成数据
 ```
 
 ## 安装
@@ -249,22 +251,22 @@ python scripts\notion_sync.py sync --limit 10
 仓库里已经加入 Cloudflare 版本的网页层：
 
 - `web/`：用于 Cloudflare Pages 的静态前端
-- `web/functions/api/`：Pages Functions API
-- `web/_worker.js`：负责静态资源、API 和密码校验的 Pages Worker
+- `web/_worker.js`：负责 API、会话鉴权、wake 代理和静态资源的 Pages Worker
 - `cloudflare/schema.sql`：D1 数据表结构
 - `scripts/sync_to_d1.py`：把本地 SQLite 结果导出成 D1 可导入 SQL
 - `wrangler.toml`：Pages + D1 绑定配置模板
+- `docs/architecture-runbook.md`：生产数据和运维边界说明
 
-配置本地预览密码：
+配置本地预览凭据：
 
 ```powershell
 copy .dev.vars.example .dev.vars
 ```
 
-编辑 `.dev.vars`，设置共享访问密码：
+编辑 `.dev.vars`，设置 5 个成员各自的初始访问码：
 
 ```env
-APP_PASSWORD=123456
+BP_ACCESS_CODES={"Alzamora Quan":"replace-me","Gary Wang":"replace-me","brody":"replace-me","Luca Viscapi":"replace-me","Frank Zhang":"replace-me"}
 ```
 
 不要提交 `.dev.vars`，它已经被 Git 忽略。
@@ -281,11 +283,17 @@ npx wrangler d1 create bp-screener
 npx wrangler d1 execute bp-screener --remote --file cloudflare/schema.sql
 ```
 
-本地导入 BP 并生成 `data/bp_screener.sqlite` 后，导出 D1 数据：
+本地导入 BP 并生成 `data/bp_screener.sqlite` 后，导出 D1 数据 upsert：
 
 ```powershell
 python scripts\sync_to_d1.py
 npx wrangler d1 execute bp-screener --remote --file data\d1_seed.sql
+```
+
+不要在生产 D1 上运行 destructive schema seed/reset。完整 schema reset 现在必须同时传 `--reset-schema` 和 `--allow-drop`，只应在临时环境或明确批准时使用：
+
+```powershell
+python scripts\sync_to_d1.py --reset-schema --allow-drop --execute
 ```
 
 部署 Pages 网站：
@@ -294,20 +302,20 @@ npx wrangler d1 execute bp-screener --remote --file data\d1_seed.sql
 npx wrangler pages deploy web --project-name bp-screener
 ```
 
-创建 Cloudflare Pages 项目后，配置线上访问密码：
+创建 Cloudflare Pages 项目后，配置线上访问码：
 
 ```powershell
-npx wrangler pages secret put APP_PASSWORD --project-name bp-screener
+npx wrangler pages secret put BP_ACCESS_CODES --project-name bp-screener
 ```
 
-如果缺少 `APP_PASSWORD`，API 请求会返回 `500`，不会默认公开项目数据。静态页面可以加载，但项目数据仍受保护。
+如果缺少 `BP_ACCESS_CODES` 且 D1 里也没有个人访问码，敏感 API 会返回明确配置错误，不会只信任 `x-bp-user`。静态页面可以加载，但项目数据、`/api/wake/*` 和 `/workbench` 仍受保护。
 
 你需要准备：
 
 - Cloudflare 账号
 - 通过 `npx wrangler login` 登录
 - 一个 D1 database ID，并填入 `wrangler.toml`
-- 一个网页共享访问密码
+- 5 个团队成员各自的访问码
 - 可选：在 Cloudflare Pages 里配置自定义域名
 
 ## 当前限制
