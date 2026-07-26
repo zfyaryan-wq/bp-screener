@@ -1147,7 +1147,30 @@ async function listProjects(request, env) {
       JOIN documents d2 ON d2.id = p2.document_id
     )
     SELECT
-      p.*,
+      p.id,
+      p.document_id,
+      p.project_name,
+      p.company_name,
+      p.industry,
+      p.country_or_region,
+      p.financing_stage,
+      p.customer_type,
+      p.revenue_stage,
+      p.recommendation,
+      p.risk_level,
+      p.ai_related,
+      p.ai_category,
+      p.business_model,
+      p.one_line_summary,
+      p.team_highlights,
+      p.traction,
+      p.risks,
+      p.tags,
+      p.screening_score,
+      p.team_score,
+      p.traction_score,
+      p.created_at,
+      p.updated_at,
       d.file_name,
       d.source_url,
       d.created_at AS document_created_at,
@@ -1178,9 +1201,17 @@ async function listProjects(request, env) {
   if (usesPersonalScoringSort) {
     projects = sortProjectsByPersonalScoring(projects).slice(0, 200);
   }
-  await attachProjectCollaboration(projects, env, lang, actor);
+  await attachProjectListCollaboration(projects, env, lang, actor);
 
-  return json({ projects, weight_profile: profile ? normalizeWeightProfile(profile) : null, highlight_summary: summarizeProjectHighlights(projects) });
+  return json(
+    {
+      projects: projects.map(listProjectDto),
+      weight_profile: profile ? normalizeWeightProfile(profile) : null,
+      highlight_summary: summarizeProjectHighlights(projects),
+    },
+    200,
+    { "cache-control": "private, max-age=30, stale-while-revalidate=120" },
+  );
 }
 
 async function listFilterOptions(request, env) {
@@ -2822,6 +2853,38 @@ async function attachProjectCollaboration(projects, env, lang = "en", actor = ""
     project.collaboration = map.get(Number(project.document_id)) || defaultCollaborationContext(lang);
     project.ops = opsMap.get(Number(project.document_id)) || defaultProjectOps(Number(project.document_id), actor);
   }
+}
+
+async function attachProjectListCollaboration(projects, env, lang = "en", actor = "") {
+  if (!projects.length) return;
+  const map = await collaborationStatusMap(projects.map((project) => project.document_id), env, lang);
+  const opsMap = await projectOpsMap(projects.map((project) => project.document_id), actor, env);
+  for (const project of projects) {
+    project.collaboration = map.get(Number(project.document_id)) || defaultCollaborationContext(lang);
+    project.ops = opsMap.get(Number(project.document_id)) || defaultProjectOps(Number(project.document_id), actor);
+  }
+}
+
+async function collaborationStatusMap(documentIds, env, lang = "en") {
+  const ids = [...new Set((documentIds || []).map(Number).filter((id) => Number.isFinite(id) && id > 0))];
+  const map = new Map();
+  if (!ids.length) return map;
+  await ensureProjectCollaborationTables(env);
+  const activityRows = [];
+  for (const chunk of chunkArray(ids, 80)) {
+    const placeholders = chunk.map(() => "?").join(", ");
+    const activity = await env.DB.prepare(`
+      SELECT document_id, actor, status, viewed_at, commented_at, asked_at, not_interested_at, updated_at
+      FROM bp_activity
+      WHERE document_id IN (${placeholders})
+    `).bind(...chunk).all();
+    activityRows.push(...(activity.results || []));
+  }
+  for (const id of ids) {
+    const rows = activityRows.filter((row) => Number(row.document_id) === id);
+    map.set(id, buildCollaborationContext(id, rows, [], lang));
+  }
+  return map;
 }
 
 async function collaborationContextMap(documentIds, env, lang = "en") {
@@ -5297,6 +5360,39 @@ function normalizeProject(row) {
     risks: parseJsonField(merged.risks),
     tags: parseJsonField(merged.tags),
     evidence: parseJsonField(merged.evidence),
+  };
+}
+
+function listProjectDto(project) {
+  return {
+    id: project.id,
+    document_id: project.document_id,
+    library_number: project.library_number,
+    project_name: project.project_name,
+    company_name: project.company_name,
+    industry: project.industry,
+    country_or_region: project.country_or_region,
+    financing_stage: project.financing_stage,
+    customer_type: project.customer_type,
+    revenue_stage: project.revenue_stage,
+    recommendation: project.recommendation,
+    risk_level: project.risk_level,
+    ai_related: Boolean(project.ai_related),
+    tags: (project.tags || []).slice(0, 12),
+    one_line_summary: project.one_line_summary,
+    screening_score: project.screening_score,
+    team_score: project.team_score,
+    traction_score: project.traction_score,
+    personal_score: project.personal_score,
+    personal_score_source: project.personal_score_source,
+    custom_rank_score: project.custom_rank_score,
+    operational_penalty: project.operational_penalty,
+    file_name: project.file_name,
+    source_url: project.source_url,
+    document_created_at: project.document_created_at,
+    updated_at: project.updated_at,
+    collaboration: project.collaboration,
+    ops: project.ops,
   };
 }
 

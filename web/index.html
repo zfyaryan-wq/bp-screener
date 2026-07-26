@@ -24,9 +24,9 @@
 
     <header class="hero">
       <nav class="nav">
-        <div class="brandMark">
-          <img class="agentAvatar brandAvatar idle" src="/vrt-agent.jpg" alt="VRT Agent" />
-          <span class="brandStatus" data-i18n="brandStatus">VRT Agent online</span>
+        <div class="heroSummary">
+          <h1 data-i18n="title">VRT BP Screener</h1>
+          <p id="welcomeMessage" class="subtitle"></p>
         </div>
         <div class="navControls">
           <button id="uploadOpenButton" type="button" class="navUploadButton" data-i18n="uploadTitle">Upload BP</button>
@@ -34,19 +34,25 @@
             <option value="en">English</option>
             <option value="zh">中文</option>
           </select>
+          <button id="openCalendarRail" type="button" class="railIconButton" aria-label="Calendar" data-i18n-title="calendarOpen">
+            <span class="buttonIconShell" aria-hidden="true">
+              <svg class="buttonIcon" viewBox="0 0 24 24" focusable="false">
+                <rect x="4" y="5" width="16" height="15" rx="2"></rect>
+                <path d="M8 3v4M16 3v4M4 10h16"></path>
+              </svg>
+            </span>
+          </button>
+          <button id="personalActivityOpenButton" type="button" class="railIconButton navActivityButton" aria-label="Personal activity" aria-expanded="false" data-i18n-title="personalActivity">
+            <span class="buttonIconShell" aria-hidden="true">
+              <svg class="buttonIcon" viewBox="0 0 24 24" focusable="false">
+                <path d="M5 6h14M5 12h10M5 18h7"></path>
+                <path d="M17 15l2 2 4-4"></path>
+              </svg>
+            </span>
+          </button>
           <button id="currentUserBadge" type="button" class="currentUserBadge" hidden></button>
         </div>
       </nav>
-      <div class="heroSummary">
-        <h1 data-i18n="title">VRT BP Screener</h1>
-        <p id="welcomeMessage" class="subtitle"></p>
-        <div class="agentIntroRow">
-          <img class="agentAvatar agentAvatar-hero idle" src="/vrt-agent.jpg" alt="VRT Agent" />
-          <p class="agentIntro" data-i18n="agentIntro">
-            VRT Agent is the VC Research Team's BP screening assistant, helping understand projects, break down questions, and combine team comments with weight preferences into recommendations.
-          </p>
-        </div>
-      </div>
     </header>
 
     <div id="uploadOverlay" class="uploadOverlay" hidden>
@@ -75,17 +81,25 @@
       </section>
     </div>
 
+    <div id="personalActivityOverlay" class="activityOverlay" hidden>
+      <section class="panel opsBoardPanel activityPopover" role="dialog" aria-modal="false" aria-labelledby="personalActivityTitle">
+        <div class="sectionTitle">
+          <div>
+            <h2 id="personalActivityTitle" data-i18n="personalActivity">Personal activity</h2>
+            <span id="reviewWeekLabel" class="subtle"></span>
+          </div>
+          <div class="activityActions">
+            <button id="refreshReviewBoard" type="button" class="secondary compactButton" data-i18n="refresh">Refresh</button>
+            <button id="personalActivityCloseButton" type="button" class="secondary compactButton" data-i18n="closeUpload">Close</button>
+          </div>
+        </div>
+        <div id="shortlistBoard" class="opsBoard"></div>
+        <div id="nominationBoard" class="opsBoard"></div>
+      </section>
+    </div>
+
     <main class="workbenchShell">
       <aside class="leftRail">
-        <button id="openCalendarRail" type="button" class="railIconButton" aria-label="Calendar" data-i18n-title="calendarOpen">
-          <span class="buttonIconShell" aria-hidden="true">
-            <svg class="buttonIcon" viewBox="0 0 24 24" focusable="false">
-              <rect x="4" y="5" width="16" height="15" rx="2"></rect>
-              <path d="M8 3v4M16 3v4M4 10h16"></path>
-            </svg>
-          </span>
-        </button>
-
         <div id="leftWorkspaceView" class="leftRailView">
           <section class="panel weightQuickPanel scoringQuickPanel">
             <div class="sectionTitle">
@@ -121,24 +135,11 @@
                 <strong data-i18n="reviewQueueTitle">My review queue</strong>
                 <div id="scoringQueueSummary" class="scoringQueueSummary"></div>
               </section>
-              <div id="quickProfileSwitch" class="quickProfileSwitch"></div>
               <div class="weightQuickActions">
-                <button id="openWeightEditor" type="button" data-i18n="advancedScoringSettings">Advanced scoring settings</button>
+                <button id="openWeightEditor" type="button" class="secondary compactButton" data-i18n="advancedScoringSettings">Advanced scoring settings</button>
               </div>
               <small class="subtle" data-i18n="advancedScoringHint">Weights, factor pools, personal factors, chart, and drag ordering.</small>
             </div>
-          </section>
-
-          <section class="panel opsBoardPanel">
-            <div class="sectionTitle">
-              <div>
-                <h2 data-i18n="personalActivity">Personal activity</h2>
-                <span id="reviewWeekLabel" class="subtle"></span>
-              </div>
-              <button id="refreshReviewBoard" type="button" class="secondary compactButton" data-i18n="refresh">Refresh</button>
-            </div>
-            <div id="shortlistBoard" class="opsBoard"></div>
-            <div id="nominationBoard" class="opsBoard"></div>
           </section>
         </div>
 
@@ -265,10 +266,6 @@
                 <div class="stat">
                   <span id="projectCount">0</span>
                   <small data-i18n="projects">Projects</small>
-                </div>
-                <div class="stat">
-                  <span id="aiCount">0</span>
-                  <small data-i18n="aiProjects">AI/tech-related projects</small>
                 </div>
               </div>
               <div id="chartGrid" class="chartGrid"></div>
@@ -453,18 +450,6 @@
             </div>
             <div id="scoreReviewCard" class="scoreReviewCard"></div>
           </section>
-
-          <details class="snippetPanel compactDetails">
-            <summary class="snippetSummary">
-              <span data-i18n="sourceSearch">Source Snippet Search</span>
-              <small data-i18n="sourceSearchHint">Secondary evidence lookup</small>
-            </summary>
-            <div class="snippetSearchRow">
-              <input id="snippetQuery" type="search" data-i18n-placeholder="sourceSearchPlaceholder" placeholder="Search source text" />
-              <button id="snippetButton" type="button" class="secondary compactButton" data-i18n="searchSnippets">Search snippets</button>
-            </div>
-            <div id="snippetList" class="snippets"></div>
-          </details>
 
           <details class="projectOpsPanel compactDetails">
             <summary class="snippetSummary">

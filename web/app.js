@@ -1,11 +1,8 @@
 const labels = {
   en: {
     eyebrow: "BP Review Workspace",
-    brandStatus: "VRT Agent online",
     title: "VRT BP Screener",
     subtitle: "Review pitch decks, filter profiles, and inspect source evidence.",
-    agentIntro:
-      "VRT Agent is the VC Research Team's BP screening assistant: it helps understand projects, break down questions, and turn team comments plus weight preferences into recommendations.",
     keyword: "Keyword",
     industry: "Industry",
     stage: "Stage",
@@ -333,10 +330,8 @@ const labels = {
   },
   zh: {
     eyebrow: "BP 审阅工作台",
-    brandStatus: "VRT Agent 在线",
     title: "VRT BP Screener",
     subtitle: "查看项目档案、筛选重点，并检查原文证据。",
-    agentIntro: "VRT Agent 是投资研究团队的 BP 筛选助手，帮助理解项目、拆解问题，并结合团队评论和权重偏好给出建议。",
     keyword: "关键词",
     industry: "行业",
     stage: "阶段",
@@ -814,6 +809,8 @@ const teamMembers = teamUserMeta.map((member) => member.name);
 const teamMemberOrder = new Map(teamMembers.map((member, index) => [member, index]));
 const allowedUploadExtensions = new Set(["pdf", "ppt", "pptx", "doc", "docx"]);
 const uploadMaxBytes = 20 * 1024 * 1024;
+const PROJECT_LIST_CACHE_PREFIX = "bp-project-list-cache-v1";
+const PROJECT_LIST_CACHE_MAX_AGE_MS = 10 * 60 * 1000;
 const welcomeTemplates = {
   en: [
     "Ready for today's review, {name}.",
@@ -901,6 +898,9 @@ const scoreReviewCard = document.querySelector("#scoreReviewCard");
 const leftWorkspaceView = document.querySelector("#leftWorkspaceView");
 const leftCalendarView = document.querySelector("#leftCalendarView");
 const calendarRailToggle = document.querySelector("#openCalendarRail");
+const personalActivityOpenButton = document.querySelector("#personalActivityOpenButton");
+const personalActivityOverlay = document.querySelector("#personalActivityOverlay");
+const personalActivityCloseButton = document.querySelector("#personalActivityCloseButton");
 const vrtAgentTargets = Array.from(document.querySelectorAll(".agentAvatar, .aiPanel"));
 let vrtAgentWorkingCount = 0;
 let pendingSwitchUser = "";
@@ -986,7 +986,7 @@ document.querySelector("#hiddenOnly")?.addEventListener("change", (event) => {
   syncHiddenFilterControls();
   loadProjects();
 });
-document.querySelector("#snippetButton").addEventListener("click", searchSnippets);
+document.querySelector("#snippetButton")?.addEventListener("click", searchSnippets);
 recommendButton.addEventListener("click", recommendProjects);
 recommendQuestion.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
@@ -1027,6 +1027,11 @@ if (scoringTemplateSelect) {
 generateDraftScoresButton?.addEventListener("click", generateCurrentDraftScore);
 reviewPendingDraftsButton?.addEventListener("click", reviewPendingDraftQueue);
 calendarRailToggle?.addEventListener("click", () => setLeftRailView(leftRailMode === "calendar" ? "workspace" : "calendar"));
+personalActivityOpenButton?.addEventListener("click", openPersonalActivityPanel);
+personalActivityCloseButton?.addEventListener("click", closePersonalActivityPanel);
+personalActivityOverlay?.addEventListener("click", (event) => {
+  if (event.target === personalActivityOverlay) closePersonalActivityPanel();
+});
 document.querySelector("#addCommentButton").addEventListener("click", addProjectComment);
 document.querySelector("#markNotInterestedButton").addEventListener("click", markNotInterested);
 document.querySelector("#projectAssistantButton").addEventListener("click", askProjectAssistant);
@@ -1134,6 +1139,19 @@ function closeWeightEditor() {
   } else {
     weightEditorDialog.removeAttribute("open");
   }
+}
+
+function openPersonalActivityPanel() {
+  if (!personalActivityOverlay) return;
+  personalActivityOverlay.hidden = false;
+  personalActivityOpenButton?.setAttribute("aria-expanded", "true");
+  if (!reviewBoard) loadReviewBoard({ includeLeaderboards: false });
+}
+
+function closePersonalActivityPanel() {
+  if (!personalActivityOverlay) return;
+  personalActivityOverlay.hidden = true;
+  personalActivityOpenButton?.setAttribute("aria-expanded", "false");
 }
 
 function setLeftRailView(mode) {
@@ -1596,6 +1614,7 @@ function hashCode(value) {
 async function loadProjects() {
   const params = new URLSearchParams();
   params.set("lang", lang);
+  params.set("view", "list");
   setParam(params, "q", value("#keyword"));
   setParam(params, "industry", value("#industry"));
   setParam(params, "stage", value("#stage"));
@@ -1615,11 +1634,43 @@ async function loadProjects() {
     params.set("weightProfileId", String(activeWeightProfileId));
   }
 
+  const cacheKey = projectListCacheKey(params);
+  const cached = readProjectListCache(cacheKey);
+  if (cached?.projects?.length) {
+    projects = cached.projects;
+    renderProjectList();
+  }
+
   const response = await apiFetch(`/api/projects?${params.toString()}`);
   if (!response) return;
-  const data = await response.json();
+  const data = await response.json().catch(() => ({}));
   projects = data.projects || [];
+  writeProjectListCache(cacheKey, projects);
   renderProjectList();
+}
+
+function projectListCacheKey(params) {
+  const stableParams = new URLSearchParams(params);
+  stableParams.sort();
+  return `${PROJECT_LIST_CACHE_PREFIX}:${currentUser || "anonymous"}:${stableParams.toString()}`;
+}
+
+function readProjectListCache(key) {
+  try {
+    const cached = JSON.parse(sessionStorage.getItem(key) || "null");
+    if (!cached || Date.now() - Number(cached.cached_at || 0) > PROJECT_LIST_CACHE_MAX_AGE_MS) return null;
+    return cached;
+  } catch {
+    return null;
+  }
+}
+
+function writeProjectListCache(key, projectItems) {
+  try {
+    sessionStorage.setItem(key, JSON.stringify({ cached_at: Date.now(), projects: projectItems || [] }));
+  } catch {
+    // Cache is a best-effort fast path; storage quotas should not block the list.
+  }
 }
 
 async function loadFilterOptions() {
@@ -3105,6 +3156,7 @@ function clamp(value, min, max) {
 }
 
 async function searchSnippets() {
+  if (!snippetList) return;
   const q = (snippetQuery?.value.trim() || value("#keyword")).trim();
   if (!q) {
     snippetList.innerHTML = "";
@@ -3238,8 +3290,10 @@ function renderRecommendation(data) {
 }
 
 function renderProjects(items) {
-  document.querySelector("#projectCount").textContent = String(items.length);
-  document.querySelector("#aiCount").textContent = String(items.filter((item) => item.ai_related).length);
+  const projectCountNode = document.querySelector("#projectCount");
+  const aiCountNode = document.querySelector("#aiCount");
+  if (projectCountNode) projectCountNode.textContent = String(items.length);
+  if (aiCountNode) aiCountNode.textContent = String(items.filter((item) => item.ai_related).length);
   if (projectCountMirror) projectCountMirror.textContent = String(items.length);
   if (aiCountMirror) aiCountMirror.textContent = String(items.filter((item) => item.ai_related).length);
 
@@ -3270,6 +3324,9 @@ function renderProjects(items) {
   grid.querySelectorAll("[data-project-highlight]").forEach((button) => {
     button.addEventListener("click", () => toggleProjectHighlight(Number(button.dataset.highlightProjectId), button.dataset.projectHighlight === "true"));
   });
+  grid.querySelectorAll("[data-project-expand]").forEach((button) => {
+    button.addEventListener("click", () => toggleProjectRowDetails(button));
+  });
 }
 
 function projectTableHeader() {
@@ -3280,7 +3337,6 @@ function projectTableHeader() {
     t("stageCustomerColumn"),
     t("scoreColumn"),
     t("riskRecommendationColumn"),
-    t("teamLikesColumn"),
     t("actions"),
   ];
   return `
@@ -3309,6 +3365,7 @@ function projectRow(project) {
     project.operational_penalty ? `${t("recommendationPenalty")} ${project.operational_penalty}` : "",
   ].filter(Boolean);
   const personalScoreLabel = project.personal_score_source === "confirmed" ? t("finalScore") : project.personal_score_source === "draft" ? t("draftScore") : t("baseScore");
+  const rowDetailsId = `project-row-details-${Number(project.document_id || 0)}`;
 
   return `
     <article class="projectRow ${highlights.highlighted_by_me ? "highlightedByMe" : highlights.count ? "highlightedByTeam" : ""}" role="row">
@@ -3319,7 +3376,6 @@ function projectRow(project) {
       <div class="projectMain" data-label="${escapeHtml(t("projectName"))}">
         <h3>${escapeHtml(projectName)}</h3>
         <small>${escapeHtml(company)}</small>
-        <p title="${escapeHtml(summary)}">${escapeHtml(summary)}</p>
         ${
           Number.isFinite(Number(project.custom_rank_score))
             ? `<div class="rankBadge">${t("customRankScore")}: ${Number(project.custom_rank_score)}</div>`
@@ -3341,33 +3397,59 @@ function projectRow(project) {
       </div>
       <div class="projectCell projectStackCell" data-label="${escapeHtml(t("riskRecommendationColumn"))}">
         <strong>${escapeHtml(project.risk_level || t("unknown"))}</strong>
-        <small>${escapeHtml(project.recommendation || t("unknown"))}</small>
-        <div class="tags projectTags projectInlineTags">
-          ${opsBadges.map((tag) => `<span class="tag opsTag">${escapeHtml(tag)}</span>`).join("")}
-        </div>
-      </div>
-      <div class="projectCollabCluster" data-label="${escapeHtml(t("teamLikesColumn"))}">
-        <div class="presenceCell">
-          ${renderPresenceChips(project.collaboration?.statuses || [])}
-        </div>
-        <div class="likesCell">
-          ${renderProjectHighlightSummary(project.ops)}
-          ${renderProjectReactionButtons(project.ops, project.document_id)}
-        </div>
+        <small title="${escapeHtml(project.recommendation || t("unknown"))}">${escapeHtml(project.recommendation || t("unknown"))}</small>
       </div>
       <div class="rowActions" data-label="${escapeHtml(t("actions"))}">
-        <button data-document-id="${project.document_id}" ${buttonAttrs(t("view"))}>${iconLabel("chevronRight", t("view"))}</button>
+        <button type="button" class="secondary projectExpandButton" data-project-expand="${project.document_id}" aria-expanded="false" aria-controls="${escapeHtml(rowDetailsId)}" ${buttonAttrs(t("profileDetails"))}>${iconLabel("chevronRight", t("profileDetails"))}</button>
+        ${renderProjectReactionButtons(project.ops, project.document_id)}
         ${renderProjectHighlightButton(project.ops, project.document_id)}
-        <button data-shortlist-id="${project.document_id}" class="secondary" ${buttonAttrs(t("addToShortlist"))}>${iconLabel("bookmark", t("addToShortlist"))}</button>
-        <button data-nominate-id="${project.document_id}" class="secondary" ${buttonAttrs(t("nominateThisWeek"))}>${iconLabel("nominate", t("nominateThisWeek"))}</button>
-        ${
-          project.source_url
-            ? `<button data-file-id="${project.document_id}" data-file-url="${escapeHtml(project.source_url)}" class="secondary" ${buttonAttrs(t("openFile"))}>${iconLabel("external", t("openFile"))}</button>`
-            : ""
-        }
+        <button data-document-id="${project.document_id}" ${buttonAttrs(t("view"))}>${iconLabel("chevronRight", t("view"))}</button>
+      </div>
+      <div id="${escapeHtml(rowDetailsId)}" class="projectRowDetails" hidden>
+        ${summary ? `<p class="projectRowSummary">${escapeHtml(summary)}</p>` : ""}
+        <div class="projectRowDetailGrid">
+          <section>
+            <strong>${escapeHtml(t("teamPresence"))}</strong>
+            <div class="presenceCell">${renderPresenceChips(project.collaboration?.statuses || [])}</div>
+            ${project.collaboration?.team_summary ? `<p class="subtle">${escapeHtml(project.collaboration.team_summary)}</p>` : ""}
+          </section>
+          <section>
+            <strong>${escapeHtml(t("collaboration"))}</strong>
+            <div class="likesCell">
+              ${renderProjectHighlightSummary(project.ops)}
+              <div class="tags projectTags">
+                ${opsBadges.map((tag) => `<span class="tag opsTag">${escapeHtml(tag)}</span>`).join("")}
+              </div>
+            </div>
+          </section>
+          <section>
+            <strong>${escapeHtml(t("tagsSummary"))}</strong>
+            <div class="tags projectTags">
+              ${(project.tags || []).map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("") || `<span class="subtle">${escapeHtml(project.ai_related ? t("aiProjectTag") : t("unknown"))}</span>`}
+            </div>
+          </section>
+          <section class="projectRowSecondaryActions">
+            <strong>${escapeHtml(t("actions"))}</strong>
+            <button data-shortlist-id="${project.document_id}" class="secondary" ${buttonAttrs(t("addToShortlist"))}>${iconLabel("bookmark", t("addToShortlist"))}</button>
+            <button data-nominate-id="${project.document_id}" class="secondary" ${buttonAttrs(t("nominateThisWeek"))}>${iconLabel("nominate", t("nominateThisWeek"))}</button>
+            ${
+              project.source_url
+                ? `<button data-file-id="${project.document_id}" data-file-url="${escapeHtml(project.source_url)}" class="secondary" ${buttonAttrs(t("openFile"))}>${iconLabel("external", t("openFile"))}</button>`
+                : ""
+            }
+          </section>
+        </div>
       </div>
     </article>
   `;
+}
+
+function toggleProjectRowDetails(button) {
+  const details = document.getElementById(button.getAttribute("aria-controls") || "");
+  if (!details) return;
+  const expanded = button.getAttribute("aria-expanded") === "true";
+  button.setAttribute("aria-expanded", expanded ? "false" : "true");
+  details.hidden = expanded;
 }
 
 async function showProject(documentId) {
