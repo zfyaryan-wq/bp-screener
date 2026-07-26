@@ -15,8 +15,6 @@
         <p data-i18n="loginHint">Select a team member to enter the BP workspace.</p>
         <div id="loginMemberAvatars" class="loginMemberAvatars" aria-hidden="true"></div>
         <select id="userSelect" autocomplete="name"></select>
-        <input id="accessCode" type="password" autocomplete="current-password" data-i18n-placeholder="accessCodePlaceholder" placeholder="Optional access code" />
-        <small data-i18n="accessCodeHint">Each member's second confirmation code for switching identity and protecting personal actions.</small>
         <button type="submit" data-i18n="loginButton">Enter</button>
         <p id="loginError" class="loginError"></p>
       </form>
@@ -172,30 +170,11 @@
           <div id="userSwitchList" class="userSwitchList"></div>
           <div id="userSwitchConfirm" class="userSwitchConfirm" hidden>
             <p id="userSwitchConfirmText"></p>
-            <label for="switchAccessCode" data-i18n="switchAccessCodeLabel">Access code / token if required</label>
-            <input id="switchAccessCode" type="password" autocomplete="current-password" data-i18n-placeholder="accessCodePlaceholder" placeholder="Optional access code" />
-            <small data-i18n="switchAccessCodeHint">Required when that member has a personal access code.</small>
             <div class="userSwitchActions">
               <button id="confirmUserSwitch" type="button" data-i18n="confirmSwitchUser">Confirm switch</button>
               <button id="cancelUserSwitch" type="button" class="secondary compactButton" data-i18n="cancelSwitchUser">Cancel</button>
             </div>
           </div>
-          <section class="accountAccessPanel" aria-labelledby="accountAccessTitle">
-            <div>
-              <h3 id="accountAccessTitle" data-i18n="accountAccessTitle">Personal access code</h3>
-              <p data-i18n="accountAccessHint">Each member's second confirmation code for switching identity and protecting personal actions.</p>
-            </div>
-            <label for="oldAccessCode" data-i18n="oldAccessCodeLabel">Current code</label>
-            <input id="oldAccessCode" type="password" autocomplete="current-password" data-i18n-placeholder="oldAccessCodePlaceholder" placeholder="Only needed when changing an existing code" />
-            <label for="newAccessCode" data-i18n="newAccessCodeLabel">New code</label>
-            <input id="newAccessCode" type="password" autocomplete="new-password" data-i18n-placeholder="newAccessCodePlaceholder" placeholder="At least 4 characters" />
-            <label for="confirmNewAccessCode" data-i18n="confirmNewAccessCodeLabel">Confirm new code</label>
-            <input id="confirmNewAccessCode" type="password" autocomplete="new-password" data-i18n-placeholder="confirmNewAccessCodePlaceholder" placeholder="Repeat new code" />
-            <div class="userSwitchActions">
-              <button id="saveAccessCode" type="button" data-i18n="saveAccessCode">Save access code</button>
-            </div>
-            <p id="accountAccessStatus" class="accountAccessStatus subtle"></p>
-          </section>
         </section>
       </dialog>
 
@@ -498,6 +477,6 @@
       </aside>
     </main>
 
-    <script src="/app.js?v=20260726-force-login-overlay-v3" type="module"></script>
+    <script src="/app.js?v=20260726-name-only-login-v1" type="module"></script>
   </body>
 </html>

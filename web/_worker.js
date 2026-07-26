@@ -347,110 +347,32 @@ async function authorizeApi(request, env) {
 
 async function authenticateRequest(request, env) {
   const allowedUsers = new Set(TEAM_MEMBERS);
-  const user = request.headers.get("x-bp-user") || "";
-  if (!allowedUsers.has(user)) {
+  const requestedUser = request.headers.get("x-bp-user") || "";
+  const sessionToken = request.headers.get("x-bp-session-token") || cookieValue(request, "bp_session") || "";
+  if (sessionToken && allowedUsers.has(requestedUser)) {
+    const session = await verifySessionToken(requestedUser, sessionToken, teamSessionSecretsFor(requestedUser, env));
+    if (session.ok) return { user: requestedUser, sessionToken };
+  }
+  if (sessionToken && !allowedUsers.has(requestedUser)) {
+    const sessionUser = await userFromSessionToken(sessionToken, env);
+    if (sessionUser) return { user: sessionUser, sessionToken };
+  }
+
+  if (!allowedUsers.has(requestedUser)) {
     return { error: json({ error: "Choose a valid team member." }, 401) };
   }
 
-  const configuredCodes = parseAccessCodeConfig(env);
-  const expectedCode = configuredCodes[user] ? String(configuredCodes[user]) : "";
-  const storedCode = await getStoredAccessCode(user, env);
-  const sessionToken = request.headers.get("x-bp-session-token") || cookieValue(request, "bp_session") || "";
-  if (sessionToken) {
-    const session = await verifySessionToken(user, sessionToken, sessionSecretsFor(user, expectedCode, storedCode));
-    if (session.ok) return { user, sessionToken };
-  }
-
-  const providedCode = request.headers.get("x-bp-access-code") || bearerToken(request);
-  if (expectedCode && timingSafeEqual(String(providedCode || ""), String(expectedCode))) {
-    return { user, sessionToken: await createSessionToken(user, expectedCode) };
-  }
-
-  if (!storedCode) {
-    if (expectedCode) {
-      return { error: json({ error: "Invalid access code for this team member." }, 401) };
-    }
-    return {
-      error: json(
-        {
-          error: "Access code is not configured for this team member. Configure BP_ACCESS_CODES or set a personal access code through an authenticated bootstrap flow.",
-        },
-        503,
-      ),
-    };
-  }
-  if (providedCode && (await verifyStoredAccessCode(user, providedCode, storedCode))) {
-    return { user, sessionToken: await createSessionToken(user, storedCode.code_hash) };
-  }
-  return { error: json({ error: "Invalid access code for this team member." }, 401) };
+  return { user: requestedUser, sessionToken: await createSessionToken(requestedUser, teamSessionSecret(requestedUser, env)) };
 }
 
 async function accountAccessCodeStatus(env) {
   const members = Object.fromEntries(TEAM_MEMBERS.map((member) => [member, false]));
-  const configuredCodes = parseAccessCodeConfig(env);
-  for (const member of TEAM_MEMBERS) {
-    members[member] = Boolean(configuredCodes[member]);
-  }
-  if (env.DB) {
-    await ensureAccountAccessCodeTable(env);
-    const rows = await env.DB.prepare("SELECT actor FROM account_access_codes").all();
-    for (const row of rows.results || []) {
-      if (TEAM_MEMBERS.includes(row.actor)) members[row.actor] = true;
-    }
-  }
   return json({ members });
 }
 
 async function accountAccessCodeAction(request, env) {
   if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
-  const actor = request.headers.get("x-bp-user") || "";
-  if (!TEAM_MEMBERS.includes(actor)) {
-    return json({ error: "Choose a valid team member." }, 401);
-  }
-  if (!env.DB) {
-    return json({ error: "D1 database is not configured." }, 500);
-  }
-  const body = await request.json().catch(() => ({}));
-  const oldCode = String(body.old_code || "").trim();
-  const newCode = String(body.new_code || "").trim();
-  if (newCode.length < 4 || newCode.length > 128) {
-    return json({ error: "Access code must be 4-128 characters." }, 400);
-  }
-
-  await ensureAccountAccessCodeTable(env);
-  const existing = await getStoredAccessCode(actor, env);
-  if (existing) {
-    if (!(await verifyStoredAccessCode(actor, oldCode, existing))) {
-      return json({ error: "Invalid current access code." }, 401);
-    }
-  } else {
-    const legacyCode = parseAccessCodeConfig(env)[actor];
-    const providedCode = request.headers.get("x-bp-access-code") || bearerToken(request) || oldCode;
-    const bootstrapAllowed = env.BP_ALLOW_ACCESS_CODE_BOOTSTRAP === "true";
-    if (!legacyCode && !bootstrapAllowed) {
-      return json({ error: "Initial access code setup requires BP_ACCESS_CODES or BP_ALLOW_ACCESS_CODE_BOOTSTRAP=true." }, 503);
-    }
-    if (legacyCode && !timingSafeEqual(String(providedCode || ""), String(legacyCode))) {
-      return json({ error: "Invalid access code for this team member." }, 401);
-    }
-  }
-
-  const salt = randomHex(16);
-  const codeHash = await hashAccessCode(actor, salt, newCode);
-  await env.DB.prepare(`
-    INSERT INTO account_access_codes(actor, salt, code_hash, created_at, updated_at)
-    VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-    ON CONFLICT(actor) DO UPDATE SET
-      salt = excluded.salt,
-      code_hash = excluded.code_hash,
-      updated_at = CURRENT_TIMESTAMP
-  `).bind(actor, salt, codeHash).run();
-  const sessionToken = await createSessionToken(actor, codeHash);
-  return json(
-    { ok: true, actor, has_access_code: true, session_token: sessionToken, expires_in: SESSION_TTL_SECONDS },
-    200,
-    sessionCookieHeaders(sessionToken),
-  );
+  return json({ error: "Personal access codes are disabled." }, 410);
 }
 
 async function ensureAccountAccessCodeTable(env) {
@@ -493,22 +415,6 @@ function bytesToHex(bytes) {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function parseAccessCodeConfig(env) {
-  const raw = env.BP_ACCESS_CODES || env.BP_ACCESS_TOKENS || "";
-  if (!raw) return {};
-  try {
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function bearerToken(request) {
-  const auth = request.headers.get("authorization") || "";
-  return auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : "";
-}
-
 function cookieValue(request, name) {
   const cookie = request.headers.get("cookie") || "";
   const prefix = `${name}=`;
@@ -530,6 +436,22 @@ function sessionSecretsFor(user, expectedCode, storedCode) {
   return [expectedCode, storedCode?.code_hash].filter(Boolean).map((secret) => `${user}:${secret}`);
 }
 
+function teamSessionSecret(user, env) {
+  return `${user}:${env.BP_SESSION_SECRET || env.BP_AUTH_SECRET || "bp-screener-team-session-v1"}`;
+}
+
+function teamSessionSecretsFor(user, env) {
+  return [teamSessionSecret(user, env)];
+}
+
+async function userFromSessionToken(token, env) {
+  for (const member of TEAM_MEMBERS) {
+    const session = await verifySessionToken(member, token, teamSessionSecretsFor(member, env));
+    if (session.ok) return member;
+  }
+  return "";
+}
+
 async function createSessionToken(user, secret) {
   const payload = {
     sub: user,
@@ -548,12 +470,20 @@ async function verifySessionToken(user, token, secrets) {
   for (const secret of secrets) {
     const expected = await hmacSha256(secret, encodedPayload);
     if (!timingSafeEqual(signature, expected)) continue;
-    const payload = JSON.parse(base64UrlDecode(encodedPayload));
+    const payload = safeJsonParse(base64UrlDecode(encodedPayload));
     if (payload.sub !== user) return { ok: false };
     if (!Number.isFinite(payload.exp) || payload.exp < Math.floor(Date.now() / 1000)) return { ok: false };
     return { ok: true };
   }
   return { ok: false };
+}
+
+function safeJsonParse(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return {};
+  }
 }
 
 async function hmacSha256(secret, value) {

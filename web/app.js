@@ -79,8 +79,8 @@ const labels = {
     switchUserAria: "Switch current user",
     switchUserCurrent: "Current user",
     switchUserConfirm: "Switching will make future actions operate as {name}. Continue?",
-    switchAccessCodeLabel: "Access code / token if required",
-    switchAccessCodeHint: "Leave blank if this user does not require a personal access code.",
+    switchAccessCodeLabel: "Access code is no longer required",
+    switchAccessCodeHint: "Choose a team member and confirm to switch.",
     confirmSwitchUser: "Confirm switch",
     cancelSwitchUser: "Cancel",
     closeUserSwitch: "Close user switcher",
@@ -238,10 +238,10 @@ const labels = {
     editProfile: "Edit",
     generatedByAi: "VRT Agent generated factors are ready. Review, edit the title, then save or apply.",
     profileSaved: "Profile saved.",
-    accessCodePlaceholder: "Optional access code",
-    accessCodeHint: "Each member's second confirmation code for switching identity and protecting personal actions.",
-    accessCodeRequired: "This member requires a personal access code.",
-    invalidAccessCode: "Invalid access code for this team member.",
+    accessCodePlaceholder: "No access code required",
+    accessCodeHint: "Choose your name and select Enter to continue.",
+    accessCodeRequired: "No access code is required. Please choose a valid team member.",
+    invalidAccessCode: "Unable to verify this team member.",
     accountAccessTitle: "Personal access code",
     accountAccessHint: "Each member's second confirmation code for switching identity and protecting personal actions.",
     oldAccessCodeLabel: "Current code",
@@ -408,8 +408,8 @@ const labels = {
     switchUserAria: "切换当前用户",
     switchUserCurrent: "当前用户",
     switchUserConfirm: "切换后将以 {name} 身份操作，继续？",
-    switchAccessCodeLabel: "如需要，请输入访问码 / token",
-    switchAccessCodeHint: "如果该用户没有配置个人访问码，可以留空。",
+    switchAccessCodeLabel: "不再需要访问码",
+    switchAccessCodeHint: "选择团队成员并确认即可切换。",
     confirmSwitchUser: "确认切换",
     cancelSwitchUser: "取消",
     closeUserSwitch: "关闭用户切换",
@@ -567,10 +567,10 @@ const labels = {
     editProfile: "编辑",
     generatedByAi: "VRT Agent 已生成因素。请检查后保存或直接应用。",
     profileSaved: "方案已保存。",
-    accessCodePlaceholder: "可选个人访问码",
-    accessCodeHint: "每个成员自己的二次确认码，用于切换身份/保护个人操作。",
-    accessCodeRequired: "该成员需要个人访问码。",
-    invalidAccessCode: "个人访问码不正确。",
+    accessCodePlaceholder: "不需要访问码",
+    accessCodeHint: "选择你的名字并点击进入即可继续。",
+    accessCodeRequired: "不需要访问码，请选择有效的小组成员。",
+    invalidAccessCode: "无法验证该团队成员。",
     accountAccessTitle: "个人访问码",
     accountAccessHint: "每个成员自己的二次确认码，用于切换身份/保护个人操作。",
     oldAccessCodeLabel: "当前访问码",
@@ -659,7 +659,7 @@ const labels = {
   },
 };
 
-const AUTH_STATE_VERSION = "20260726-force-login-overlay-v3";
+const AUTH_STATE_VERSION = "20260726-name-only-login-v1";
 const AUTH_STATE_VERSION_KEY = "bp-screener-auth-state-version";
 migrateAuthState();
 
@@ -1055,14 +1055,11 @@ loginForm.addEventListener("submit", async (event) => {
     triggerAuthError(loginForm, userSelect);
     return;
   }
-  const providedCode = accessCodeInput?.value.trim() || "";
-  const nextSessionToken = await verifyAccountAccess(selectedUser, providedCode, loginForm, accessCodeInput, {
+  const nextSessionToken = await verifyAccountAccess(selectedUser, loginForm, userSelect, {
     useStoredSession: canUseStoredSessionFor(selectedUser),
   });
   if (!nextSessionToken) {
-    loginError.textContent = !providedCode && (accountAccessCodeStatus[selectedUser] || lastAuthStatus === 401)
-      ? t("accessCodeRequired")
-      : lastAuthError || t("invalidAccessCode");
+    loginError.textContent = lastAuthError || t("invalidAccessCode");
     return;
   }
   currentUser = selectedUser;
@@ -1274,7 +1271,7 @@ function canUseStoredSessionFor(user) {
   return Boolean(sessionToken && storedLoginUser && user === storedLoginUser);
 }
 
-async function verifyAccountAccess(user, code, errorContainer, errorInput, options = {}) {
+async function verifyAccountAccess(user, errorContainer, errorInput, options = {}) {
   lastAuthError = "";
   lastAuthStatus = 0;
   const response = await fetch("/api/account/me", {
@@ -1283,7 +1280,6 @@ async function verifyAccountAccess(user, code, errorContainer, errorInput, optio
       "x-bp-timezone": userTimezone,
       "x-bp-locale": currentLocale(),
       ...(sessionToken && (user === currentUser || options.useStoredSession) ? { "x-bp-session-token": sessionToken } : {}),
-      ...(code ? { "x-bp-access-code": code } : {}),
     },
   }).catch(() => null);
   if (response?.ok) {
@@ -1407,7 +1403,7 @@ function openUserSwitchDialog() {
   pendingSwitchUser = "";
   renderUserSwitchList();
   clearPendingUserSwitch();
-  setAccountAccessStatus(accountAccessCodeStatus[currentUser] ? t("accessCodeRequired") : "", "");
+  setAccountAccessStatus("", "");
   userSwitchDialog.showModal();
 }
 
@@ -1447,13 +1443,12 @@ function selectSwitchUser(name) {
   }
   if (userSwitchConfirm) userSwitchConfirm.hidden = false;
   if (userSwitchConfirmText) {
-    const suffix = accountAccessCodeStatus[name] ? ` ${t("accessCodeRequired")}` : "";
-    userSwitchConfirmText.textContent = `${t("switchUserConfirm").replace("{name}", userDisplayName(name))}${suffix}`;
+    userSwitchConfirmText.textContent = t("switchUserConfirm").replace("{name}", userDisplayName(name));
   }
   if (switchAccessCodeInput) {
     switchAccessCodeInput.value = "";
-    switchAccessCodeInput.focus();
   }
+  confirmUserSwitchButton?.focus();
   userSwitchList?.querySelectorAll("[data-switch-user]").forEach((button) => {
     button.classList.toggle("selected", button.dataset.switchUser === name);
   });
@@ -1472,8 +1467,7 @@ async function confirmUserSwitch() {
     clearPendingUserSwitch();
     return;
   }
-  const nextAccessCode = switchAccessCodeInput?.value.trim() || "";
-  const nextSessionToken = await verifyAccountAccess(pendingSwitchUser, nextAccessCode, userSwitchConfirm, switchAccessCodeInput);
+  const nextSessionToken = await verifyAccountAccess(pendingSwitchUser, userSwitchConfirm, confirmUserSwitchButton);
   if (!nextSessionToken) return;
   currentUser = pendingSwitchUser;
   storedLoginUser = pendingSwitchUser;
@@ -4288,7 +4282,7 @@ async function apiFetch(url, options = {}) {
     if (accessCodeInput) accessCodeInput.value = "";
     loginOverlay.classList.remove("hidden");
     loginError.textContent = errorPayload.error || t("invalidAccessCode");
-    triggerAuthError(loginForm, accessCodeInput);
+    triggerAuthError(loginForm, userSelect);
     userSelect.focus();
     return null;
   }
@@ -4301,7 +4295,6 @@ function authHeaders() {
     "x-bp-timezone": userTimezone,
     "x-bp-locale": currentLocale(),
     ...(sessionToken ? { "x-bp-session-token": sessionToken } : {}),
-    ...(accessCode ? { "x-bp-access-code": accessCode } : {}),
   };
 }
 
