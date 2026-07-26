@@ -32,7 +32,7 @@
             <option value="en">English</option>
             <option value="zh">中文</option>
           </select>
-          <button id="openCalendarRail" type="button" class="railIconButton" aria-label="Calendar" data-i18n-title="calendarOpen">
+          <button id="openCalendarRail" type="button" class="railIconButton" aria-label="Calendar" aria-expanded="false" data-i18n-title="calendarOpen">
             <span class="buttonIconShell" aria-hidden="true">
               <svg class="buttonIcon" viewBox="0 0 24 24" focusable="false">
                 <rect x="4" y="5" width="16" height="15" rx="2"></rect>
@@ -96,6 +96,19 @@
       </section>
     </div>
 
+    <dialog id="calendarDialog" class="calendarDialog" aria-labelledby="calendarDialogTitle">
+      <section class="panel opsBoardPanel calendarPopover">
+        <div class="sectionTitle">
+          <div>
+            <h2 id="calendarDialogTitle" data-i18n="calendarReview">Calendar review</h2>
+            <span class="subtle" data-i18n="calendarLocalTimeNotice">Shown in your local time</span>
+          </div>
+          <button id="calendarCloseButton" type="button" class="secondary compactButton" data-i18n="closeUpload">Close</button>
+        </div>
+        <div id="calendarBoard" class="opsBoard"></div>
+      </section>
+    </dialog>
+
     <main class="workbenchShell">
       <aside class="leftRail">
         <div id="leftWorkspaceView" class="leftRailView">
@@ -141,17 +154,7 @@
           </section>
         </div>
 
-        <div id="leftCalendarView" class="leftRailView calendarRailView" hidden>
-          <section class="panel opsBoardPanel calendarPanel">
-            <div class="sectionTitle">
-              <div>
-                <h2 data-i18n="calendarReview">Calendar review</h2>
-                <span class="subtle" data-i18n="calendarLocalTimeNotice">Shown in your local time</span>
-              </div>
-            </div>
-            <div id="calendarBoard" class="opsBoard"></div>
-          </section>
-        </div>
+        <div id="leftCalendarView" class="leftRailView calendarRailView" hidden></div>
       </aside>
 
       <dialog id="userSwitchDialog" class="userSwitchDialog" aria-labelledby="userSwitchTitle">
@@ -274,7 +277,7 @@
           <section class="panel filters">
             <div>
               <label data-i18n="keyword">Keyword</label>
-              <input id="keyword" type="search" placeholder="AI/tech healthcare, SaaS, Series A" />
+              <input id="keyword" type="search" placeholder="Healthcare, SaaS, Series A" />
             </div>
             <div>
               <label data-i18n="industry">Industry</label>
@@ -333,14 +336,6 @@
               </select>
             </div>
             <div>
-              <label data-i18n="aiRelatedFilter">AI/tech-related</label>
-              <select id="aiRelated">
-                <option value="" data-i18n="any">Any</option>
-                <option value="true" data-i18n="yes">Yes</option>
-                <option value="false" data-i18n="no">No</option>
-              </select>
-            </div>
-            <div>
               <label data-i18n="sortBy">Sort by</label>
               <select id="sortBy">
                 <option value="updated_desc" data-i18n="sortUpdated">Newest updated</option>
@@ -354,6 +349,17 @@
                 <option value="personal_scoring_desc" data-i18n="sortPersonalScoring">My confirmed scores</option>
               </select>
             </div>
+            <details class="advancedFilterDetails">
+              <summary data-i18n="moreFilters">More filters</summary>
+              <div class="advancedFilterBody">
+                <label data-i18n="aiRelatedFilter">Technology-related</label>
+                <select id="aiRelated">
+                  <option value="" data-i18n="any">Any</option>
+                  <option value="true" data-i18n="yes">Yes</option>
+                  <option value="false" data-i18n="no">No</option>
+                </select>
+              </div>
+            </details>
             <div class="hiddenFilterGroup" data-i18n-title="hiddenFiltersHint" aria-label="UI-only filters">
               <label class="filterChip" data-i18n-title="hideDiscussedTitle">
                 <input id="hideDiscussed" type="checkbox" />

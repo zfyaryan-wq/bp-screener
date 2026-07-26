@@ -12,7 +12,7 @@ const labels = {
     revenueStage: "Revenue stage",
     riskLevel: "Risk level",
     tagFilter: "Tags / keywords",
-    aiRelatedFilter: "AI/tech-related",
+    aiRelatedFilter: "Technology-related",
     any: "Any",
     high: "High",
     medium: "Medium",
@@ -28,12 +28,9 @@ const labels = {
     sortRisk: "Lower risk first",
     sortCustomWeight: "Personal weight ranking",
     sortPersonalScoring: "My confirmed scores",
-    aiOnly: "AI/tech-related only",
     search: "Search",
     projects: "Projects",
     projectName: "Project name",
-    aiProjects: "AI/tech-related projects",
-    aiProjectTag: "AI/tech-related",
     sourceSearch: "Source Snippet Search",
     sourceSearchHint: "Secondary evidence lookup",
     sourceSearchPlaceholder: "Search source text or reuse the keyword filter",
@@ -51,6 +48,7 @@ const labels = {
     highlightOnly: "Highlighted",
     hiddenOnly: "Hidden",
     hiddenFiltersHint: "UI-only filters",
+    moreFilters: "More filters",
     hideDiscussedTitle: "Hide discussed projects",
     hideNotInterestedTitle: "Hide not interested projects",
     highlightOnlyTitle: "Show highlighted projects only",
@@ -87,7 +85,6 @@ const labels = {
     industryChart: "Industry",
     stageChart: "Financing Stage",
     recommendationChart: "Recommendation",
-    aiChart: "AI/tech-related share",
     noProjects: "No projects found. Add BP files locally, analyze them, then sync data to D1.",
     view: "View details",
     openFile: "Open file",
@@ -140,13 +137,23 @@ const labels = {
     templateTypeC: "Type C",
     templateMyCustom: "My custom",
     currentTemplate: "Template",
+    scoringTemplateSwitched: "Scoring template switched to {template}",
     currentWeightSummary: "Weight preference",
     learnedFrom: "Learned from {count} BP adjustments",
     lastUpdated: "Last updated",
     vrtDraftModeTitle: "VRT draft mode",
     vrtDraftModeCopy: "VRT Agent only drafts scores. You make the final call.",
-    generateDraftScores: "Generate draft scores",
+    generateDraftScores: "Generate current BP draft",
     reviewPendingDrafts: "Review pending drafts",
+    noDraftsForTemplate: "No drafts for this template yet.",
+    pendingDraftCount: "{count} drafts",
+    nextPendingDraft: "Next: {project}",
+    reviewNextDraft: "Review next",
+    noDraftsShort: "0 drafts",
+    draftsShort: "drafts",
+    adjustedShort: "adjusted",
+    confirmedShort: "confirmed",
+    nextShort: "Next",
     currentBpOnlyHint: "Current implementation drafts the selected BP first; queue review is ready for pending drafts.",
     reviewQueueTitle: "My review queue",
     draftsWaiting: "Drafts waiting",
@@ -341,7 +348,7 @@ const labels = {
     revenueStage: "收入阶段",
     riskLevel: "风险等级",
     tagFilter: "标签 / 关键词",
-    aiRelatedFilter: "智能技术相关",
+    aiRelatedFilter: "技术相关",
     any: "不限",
     high: "高",
     medium: "中",
@@ -357,12 +364,9 @@ const labels = {
     sortRisk: "低风险优先",
     sortCustomWeight: "个人权重排序",
     sortPersonalScoring: "我的确认评分",
-    aiOnly: "只看智能技术相关",
     search: "搜索",
     projects: "项目",
     projectName: "项目名",
-    aiProjects: "智能技术相关",
-    aiProjectTag: "智能技术相关",
     sourceSearch: "原文片段搜索",
     sourceSearchHint: "次级证据查询",
     sourceSearchPlaceholder: "搜索原文，留空则使用左侧关键词",
@@ -380,6 +384,7 @@ const labels = {
     highlightOnly: "高亮",
     hiddenOnly: "隐藏",
     hiddenFiltersHint: "仅界面筛选",
+    moreFilters: "更多筛选",
     hideDiscussedTitle: "隐藏已讨论项目",
     hideNotInterestedTitle: "隐藏不感兴趣项目",
     highlightOnlyTitle: "只看高亮项目",
@@ -416,7 +421,6 @@ const labels = {
     industryChart: "行业分布",
     stageChart: "融资阶段",
     recommendationChart: "推荐等级",
-    aiChart: "智能技术相关占比",
     noProjects: "还没有项目。请先在本地添加并分析 BP，再把数据同步到 D1。",
     view: "查看详情",
     openFile: "打开原文件",
@@ -469,13 +473,23 @@ const labels = {
     templateTypeC: "Type C",
     templateMyCustom: "My custom",
     currentTemplate: "当前模板",
+    scoringTemplateSwitched: "评分模板已切换为 {template}",
     currentWeightSummary: "当前权重偏好",
     learnedFrom: "已学习自 {count} 个 BP 的人工调整",
     lastUpdated: "最近更新",
     vrtDraftModeTitle: "VRT 草稿模式",
     vrtDraftModeCopy: "VRT Agent only drafts scores. You make the final call.",
-    generateDraftScores: "生成草稿分",
+    generateDraftScores: "生成当前 BP 草稿分",
     reviewPendingDrafts: "查看待确认草稿",
+    noDraftsForTemplate: "当前模板还没有待确认草稿。",
+    pendingDraftCount: "{count} 条草稿",
+    nextPendingDraft: "下一条：{project}",
+    reviewNextDraft: "看下一条",
+    noDraftsShort: "0 草稿",
+    draftsShort: "草稿",
+    adjustedShort: "已调",
+    confirmedShort: "已确认",
+    nextShort: "下一条",
     currentBpOnlyHint: "当前先支持为选中的 BP 生成草稿；待确认队列已预留入口。",
     reviewQueueTitle: "我的确认队列",
     draftsWaiting: "待确认草稿",
@@ -698,7 +712,7 @@ let hideNotInterestedProjects = localStorage.getItem("bp-hide-not-interested-pro
 let highlightOnlyProjects = localStorage.getItem("bp-highlight-only-projects") === "true";
 let hiddenOnlyProjects = localStorage.getItem("bp-hidden-only-projects") === "true";
 let accountAccessCodeStatus = {};
-let activeScoringTemplate = localStorage.getItem("bp-scoring-template") || "type_a";
+let activeScoringTemplate = normalizeScoringTemplateKey(localStorage.getItem("bp-scoring-template"));
 const userTimezone = resolveUserTimezone();
 const DEFAULT_FACTOR_WEIGHTS = [40, 25, 18, 11, 6];
 const MIN_FACTOR_WEIGHT = 5;
@@ -844,7 +858,6 @@ const welcomeMessage = document.querySelector("#welcomeMessage");
 const currentUserBadge = document.querySelector("#currentUserBadge");
 const personalUserMirror = document.querySelector("#personalUserMirror");
 const projectCountMirror = document.querySelector("#projectCountMirror");
-const aiCountMirror = document.querySelector("#aiCountMirror");
 const loginMemberAvatars = document.querySelector("#loginMemberAvatars");
 const userSwitchDialog = document.querySelector("#userSwitchDialog");
 const userSwitchList = document.querySelector("#userSwitchList");
@@ -898,6 +911,8 @@ const scoreReviewCard = document.querySelector("#scoreReviewCard");
 const leftWorkspaceView = document.querySelector("#leftWorkspaceView");
 const leftCalendarView = document.querySelector("#leftCalendarView");
 const calendarRailToggle = document.querySelector("#openCalendarRail");
+const calendarDialog = document.querySelector("#calendarDialog");
+const calendarCloseButton = document.querySelector("#calendarCloseButton");
 const personalActivityOpenButton = document.querySelector("#personalActivityOpenButton");
 const personalActivityOverlay = document.querySelector("#personalActivityOverlay");
 const personalActivityCloseButton = document.querySelector("#personalActivityCloseButton");
@@ -1014,19 +1029,21 @@ weightEditorDialog?.addEventListener("click", (event) => {
 });
 if (scoringTemplateSelect) {
   scoringTemplateSelect.value = activeScoringTemplate;
-  scoringTemplateSelect.addEventListener("change", () => {
-    activeScoringTemplate = scoringTemplateSelect.value || "type_a";
-    localStorage.setItem("bp-scoring-template", activeScoringTemplate);
-    loadScoringProfile();
-    loadScoringQueue();
-    refreshSelectedScoreReview();
-    loadProjects();
-    renderScoreReviewCard(selectedProject);
-  });
+  scoringTemplateSelect.addEventListener("change", handleScoringTemplateChange);
 }
 generateDraftScoresButton?.addEventListener("click", generateCurrentDraftScore);
 reviewPendingDraftsButton?.addEventListener("click", reviewPendingDraftQueue);
-calendarRailToggle?.addEventListener("click", () => setLeftRailView(leftRailMode === "calendar" ? "workspace" : "calendar"));
+calendarRailToggle?.addEventListener("click", openCalendarDialog);
+calendarCloseButton?.addEventListener("click", closeCalendarDialog);
+calendarDialog?.addEventListener("click", (event) => {
+  if (event.target === calendarDialog) closeCalendarDialog();
+});
+calendarDialog?.addEventListener("close", () => {
+  calendarRailToggle?.setAttribute("aria-expanded", "false");
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && calendarDialog?.open) closeCalendarDialog();
+});
 personalActivityOpenButton?.addEventListener("click", openPersonalActivityPanel);
 personalActivityCloseButton?.addEventListener("click", closePersonalActivityPanel);
 personalActivityOverlay?.addEventListener("click", (event) => {
@@ -1077,7 +1094,7 @@ loginForm.addEventListener("submit", async (event) => {
 });
 
 applyLanguage();
-setLeftRailView(leftRailMode === "calendar" ? "calendar" : "workspace");
+setLeftRailView("workspace");
 bootstrapWorkspace();
 window.setTimeout(loadAccessCodeStatus, 0);
 
@@ -1151,21 +1168,45 @@ function closePersonalActivityPanel() {
   personalActivityOpenButton?.setAttribute("aria-expanded", "false");
 }
 
-function setLeftRailView(mode) {
-  leftRailMode = mode === "calendar" ? "calendar" : "workspace";
-  localStorage.setItem("bp-left-rail-mode", leftRailMode);
-  if (leftWorkspaceView) leftWorkspaceView.hidden = leftRailMode === "calendar";
-  if (leftCalendarView) leftCalendarView.hidden = leftRailMode !== "calendar";
-  if (calendarRailToggle) {
-    const labelKey = leftRailMode === "calendar" ? "workspaceOpen" : "calendarOpen";
-    calendarRailToggle.dataset.i18nTitle = labelKey;
-    calendarRailToggle.title = t(labelKey);
-    calendarRailToggle.setAttribute("aria-label", t(labelKey));
-    calendarRailToggle.setAttribute("aria-pressed", String(leftRailMode === "calendar"));
+function openCalendarDialog() {
+  if (!calendarDialog) return;
+  calendarExpanded = true;
+  localStorage.setItem("bp-calendar-expanded", "true");
+  if (reviewBoard) renderCalendarBoard(reviewBoard.calendar || []);
+  else loadReviewBoard({ includeLeaderboards: false });
+  if (calendarDialog.open) return;
+  if (typeof calendarDialog.showModal === "function") {
+    calendarDialog.showModal();
+  } else {
+    calendarDialog.setAttribute("open", "");
   }
-  if (leftRailMode === "calendar") {
-    calendarExpanded = true;
-    localStorage.setItem("bp-calendar-expanded", "true");
+  calendarRailToggle?.setAttribute("aria-expanded", "true");
+}
+
+function closeCalendarDialog() {
+  if (!calendarDialog) return;
+  if (!calendarDialog.open && !calendarDialog.hasAttribute("open")) {
+    calendarRailToggle?.setAttribute("aria-expanded", "false");
+    return;
+  }
+  if (typeof calendarDialog.close === "function") {
+    calendarDialog.close();
+  } else {
+    calendarDialog.removeAttribute("open");
+    calendarRailToggle?.setAttribute("aria-expanded", "false");
+  }
+}
+
+function setLeftRailView(mode) {
+  leftRailMode = "workspace";
+  localStorage.setItem("bp-left-rail-mode", leftRailMode);
+  if (leftWorkspaceView) leftWorkspaceView.hidden = false;
+  if (leftCalendarView) leftCalendarView.hidden = true;
+  if (calendarRailToggle) {
+    calendarRailToggle.dataset.i18nTitle = "calendarOpen";
+    calendarRailToggle.title = t("calendarOpen");
+    calendarRailToggle.setAttribute("aria-label", t("calendarOpen"));
+    calendarRailToggle.setAttribute("aria-pressed", "false");
   }
   if (reviewBoard) renderCalendarBoard(reviewBoard.calendar || []);
 }
@@ -1874,10 +1915,35 @@ async function loadScoringProfile() {
 
 async function loadScoringQueue() {
   if (!currentUser) return;
-  const response = await apiFetch(`/api/scoring/queue?lang=${encodeURIComponent(lang)}`);
+  const params = new URLSearchParams({ lang, template: activeScoringTemplate });
+  const response = await apiFetch(`/api/scoring/queue?${params.toString()}`);
   if (!response) return;
   scoringQueue = await response.json().catch(() => null);
   renderScoringQueueSummary();
+}
+
+async function handleScoringTemplateChange() {
+  activeScoringTemplate = normalizeScoringTemplateKey(scoringTemplateSelect?.value);
+  if (scoringTemplateSelect) scoringTemplateSelect.value = activeScoringTemplate;
+  localStorage.setItem("bp-scoring-template", activeScoringTemplate);
+  scoringProfile = null;
+  scoringQueue = null;
+  if (scoringDraftStatus) {
+    scoringDraftStatus.textContent = t("scoringTemplateSwitched").replace("{template}", templateLabel(activeScoringTemplate));
+  }
+  if (selectedDocumentId && selectedProject) {
+    applyScoreReviewToProject(selectedDocumentId, { draft: null, user_score: null, status: "none" });
+  } else {
+    renderScoreReviewCard(selectedProject);
+  }
+  renderWeightQuickPanel();
+  renderScoringQueueSummary();
+  await Promise.allSettled([
+    loadScoringProfile(),
+    loadScoringQueue(),
+    refreshSelectedScoreReview(),
+    loadProjects(),
+  ]);
 }
 
 function renderFactorBuilder() {
@@ -2498,26 +2564,46 @@ function renderWeightQuickPanel() {
 }
 
 function renderScoringQueueSummary() {
-  if (!scoringQueueSummary) return;
   const stats = scoringQueue?.stats || scoringProfile || {};
+  const draftCount = Number(stats.drafts_waiting || 0);
+  const firstDraft = scoringQueue?.drafts?.[0] || null;
+  if (reviewPendingDraftsButton) {
+    reviewPendingDraftsButton.disabled = draftCount <= 0;
+    reviewPendingDraftsButton.innerHTML = iconLabel("chevronRight", draftCount > 0 ? `${t("reviewNextDraft")} · ${draftCount} ${t("draftsShort")}` : t("noDraftsShort"));
+    reviewPendingDraftsButton.title = firstDraft?.label
+      ? t("nextPendingDraft").replace("{project}", firstDraft.label)
+      : t("noDraftsForTemplate");
+  }
+  if (!scoringQueueSummary) return;
   const items = [
-    [t("draftsWaiting"), Number(stats.drafts_waiting || 0)],
-    [t("adjustedThisWeek"), Number(stats.adjusted_this_week || 0)],
-    [t("confirmedScores"), Number(stats.confirmed || stats.confirmed_count || 0)],
+    [t("draftsShort"), draftCount],
+    [t("adjustedShort"), Number(stats.adjusted_this_week || 0)],
+    [t("confirmedShort"), Number(stats.confirmed || stats.confirmed_count || 0)],
   ];
-  scoringQueueSummary.innerHTML = items
+  const summary = items
     .map(([label, count]) => `<div class="queueMetric"><strong>${count}</strong><span>${escapeHtml(label)}</span></div>`)
     .join("");
+  scoringQueueSummary.innerHTML = `${summary}${
+    firstDraft?.label
+      ? `<div class="queueMetric nextDraft"><strong>${escapeHtml(String(firstDraft.draft_score ?? "-"))}</strong><span>${escapeHtml(`${t("nextShort")}: ${firstDraft.label}`)}</span></div>`
+      : `<div class="queueMetric nextDraft empty"><strong>0</strong><span>${escapeHtml(t("noDraftsForTemplate"))}</span></div>`
+  }`;
 }
 
 function templateLabel(key) {
+  const templateKey = normalizeScoringTemplateKey(key);
   const labelsByKey = {
     type_a: t("templateTypeA"),
     type_b: t("templateTypeB"),
     type_c: t("templateTypeC"),
     my_custom: t("templateMyCustom"),
   };
-  return labelsByKey[key] || labelsByKey.type_a;
+  return labelsByKey[templateKey] || labelsByKey.type_a;
+}
+
+function normalizeScoringTemplateKey(value) {
+  const key = String(value || "type_a").trim().toLowerCase().replace(/\s+/g, "_");
+  return ["type_a", "type_b", "type_c", "my_custom"].includes(key) ? key : "type_a";
 }
 
 async function loadReviewBoard(options = {}) {
@@ -2739,6 +2825,7 @@ function weeklyNominationProjectButton(item) {
 }
 
 function renderCalendarBoard(calendar) {
+  if (!calendarBoard) return;
   const events = (calendar || []).map(normalizeCalendarEvent);
   const eventMap = groupCalendarEvents(events);
   const days = calendarGridDays(events);
@@ -3285,11 +3372,8 @@ function renderRecommendation(data) {
 
 function renderProjects(items) {
   const projectCountNode = document.querySelector("#projectCount");
-  const aiCountNode = document.querySelector("#aiCount");
   if (projectCountNode) projectCountNode.textContent = String(items.length);
-  if (aiCountNode) aiCountNode.textContent = String(items.filter((item) => item.ai_related).length);
   if (projectCountMirror) projectCountMirror.textContent = String(items.length);
-  if (aiCountMirror) aiCountMirror.textContent = String(items.filter((item) => item.ai_related).length);
 
   if (!items.length) {
     grid.innerHTML = `<div class="panel projectEmpty">${t("noProjects")}</div>`;
@@ -3378,7 +3462,7 @@ function projectRow(project) {
       </div>
       <div class="projectCell projectStackCell" data-label="${escapeHtml(t("industryRegion"))}">
         <strong>${escapeHtml(industryRegion)}</strong>
-        <small>${escapeHtml((project.tags || []).slice(0, 2).join(" / ") || (project.ai_related ? t("aiProjectTag") : t("unknown")))}</small>
+        <small>${escapeHtml((project.tags || []).slice(0, 2).join(" / ") || t("unknown"))}</small>
       </div>
       <div class="projectCell projectStackCell" data-label="${escapeHtml(t("stageCustomerColumn"))}">
         <strong>${escapeHtml(project.financing_stage || t("unknown"))}</strong>
@@ -3419,7 +3503,7 @@ function projectRow(project) {
           <section>
             <strong>${escapeHtml(t("tagsSummary"))}</strong>
             <div class="tags projectTags">
-              ${(project.tags || []).map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("") || `<span class="subtle">${escapeHtml(project.ai_related ? t("aiProjectTag") : t("unknown"))}</span>`}
+              ${(project.tags || []).map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("") || `<span class="subtle">${escapeHtml(t("unknown"))}</span>`}
             </div>
           </section>
           <section class="projectRowSecondaryActions">
@@ -3451,7 +3535,7 @@ async function showProject(documentId) {
   if (!response) return;
   const data = await response.json();
   const rankedProject = projects.find((item) => Number(item.document_id) === Number(documentId));
-  const project = { ...(data.project || {}), ...(rankedProject || {}) };
+  const project = { ...(rankedProject || {}), ...(data.project || {}) };
   if (!project) return;
   selectedDocumentId = Number(project.document_id || documentId);
   selectedProject = project;
@@ -3466,7 +3550,6 @@ async function showProject(documentId) {
     </div>
     <div class="detailGrid">
       ${detailItem(t("industry"), project.industry)}
-      ${detailItem(t("aiProjects"), project.ai_related ? t("yes") : t("no"))}
       ${detailItem(t("stageLabel"), project.financing_stage)}
       ${detailItem(t("screeningScore"), Number(project.screening_score || 0))}
       ${detailItem(t("teamScore"), Number(project.team_score || 0))}
@@ -3695,10 +3778,13 @@ function applyScoreReviewToProject(documentId, scoreReview) {
 function reviewPendingDraftQueue() {
   const firstDraft = scoringQueue?.drafts?.[0];
   if (firstDraft?.document_id) {
+    if (scoringDraftStatus) {
+      scoringDraftStatus.textContent = t("nextPendingDraft").replace("{project}", firstDraft.label || `BP ${firstDraft.document_id}`);
+    }
     showProject(firstDraft.document_id);
     return;
   }
-  if (scoringDraftStatus) scoringDraftStatus.textContent = t("currentBpOnlyHint");
+  if (scoringDraftStatus) scoringDraftStatus.textContent = t("noDraftsForTemplate");
 }
 
 function renderPresenceChips(statuses) {
@@ -4301,7 +4387,6 @@ function authHeaders() {
 function renderCharts(items) {
   const chartGrid = document.querySelector("#chartGrid");
   chartGrid.innerHTML = [
-    donutChart(t("aiChart"), items.filter((item) => item.ai_related).length, items.length),
     barChart(t("industryChart"), countBy(items, "industry")),
     barChart(t("stageChart"), countBy(items, "financing_stage")),
     barChart(t("recommendationChart"), countBy(items, "recommendation")),
@@ -4336,17 +4421,6 @@ function barChart(title, rows) {
           `,
         )
         .join("")}
-    </article>
-  `;
-}
-
-function donutChart(title, value, total) {
-  const percent = total ? Math.round((value / total) * 100) : 0;
-  return `
-    <article class="chartCard">
-      <h3>${escapeHtml(title)}</h3>
-      <div class="donut" style="--value:${percent}%"></div>
-      <div class="donutLabel"><strong>${percent}%</strong> · ${value}/${total}</div>
     </article>
   `;
 }

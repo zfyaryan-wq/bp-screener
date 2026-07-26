@@ -1527,7 +1527,7 @@ async function scoringProfile(request, env) {
   await ensureScoringTables(env);
   const actor = request.headers.get("x-bp-user") || "";
   const url = new URL(request.url);
-  const templateKey = normalizeScoringTemplate(url.searchParams.get("template"));
+  const templateKey = normalizeScoringTemplate(url.searchParams.get("template") || url.searchParams.get("scoringTemplate"));
   const stats = await scoringStats(actor, env, templateKey);
   const latestProfile = await latestWeightProfileForActor(actor, env);
   return json({
@@ -1548,8 +1548,10 @@ async function scoringProfile(request, env) {
 async function scoringQueue(request, env) {
   await ensureScoringTables(env);
   const actor = request.headers.get("x-bp-user") || "";
-  const lang = localizedLang(new URL(request.url).searchParams.get("lang"));
-  const stats = await scoringStats(actor, env);
+  const url = new URL(request.url);
+  const lang = localizedLang(url.searchParams.get("lang"));
+  const templateKey = normalizeScoringTemplate(url.searchParams.get("template") || url.searchParams.get("scoringTemplate"));
+  const stats = await scoringStats(actor, env, templateKey);
   const drafts = await env.DB.prepare(`
     SELECT
       d.document_id,
@@ -1564,10 +1566,10 @@ async function scoringQueue(request, env) {
     FROM bp_score_drafts d
     JOIN projects p ON p.document_id = d.document_id
     LEFT JOIN bp_user_scores s ON s.document_id = d.document_id AND s.actor = d.actor AND s.template_key = d.template_key
-    WHERE d.actor = ? AND s.document_id IS NULL
+    WHERE d.actor = ? AND d.template_key = ? AND s.document_id IS NULL
     ORDER BY d.updated_at DESC
     LIMIT 20
-  `).bind(actor).all();
+  `).bind(actor, templateKey).all();
   return json({
     stats,
     drafts: (drafts.results || []).map((row) => ({
