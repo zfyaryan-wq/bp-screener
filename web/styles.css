@@ -2421,8 +2421,8 @@ button.secondary:hover {
 
 .weeklyNominationGrid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(68px, 1fr));
-  gap: 4px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 3px;
   min-width: 0;
 }
 
@@ -2430,10 +2430,10 @@ button.secondary:hover {
   display: grid;
   min-width: 0;
   align-content: start;
-  gap: 4px;
+  gap: 3px;
   border: 1px solid rgba(52, 211, 153, 0.18);
-  border-radius: 11px;
-  padding: 6px;
+  border-radius: 9px;
+  padding: 4px;
   background:
     radial-gradient(circle at 20% 0%, rgba(34, 197, 94, 0.12), transparent 42%),
     rgba(2, 8, 8, 0.48);
@@ -2442,14 +2442,14 @@ button.secondary:hover {
 .weeklyNominationPerson {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 4px;
+  gap: 3px;
   align-items: center;
   min-width: 0;
 }
 
 .weeklyNominationPerson .avatar-large {
-  --avatar-size: 28px;
-  --avatar-font-size: 10px;
+  --avatar-size: 22px;
+  --avatar-font-size: 8px;
 }
 
 .weeklyNominationPerson strong,
@@ -2462,12 +2462,12 @@ button.secondary:hover {
 
 .weeklyNominationPerson strong {
   color: #d1fae5;
-  font-size: 10px;
+  font-size: 9px;
 }
 
 .weeklyNominationProjects {
   display: grid;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
 }
 
@@ -2477,8 +2477,8 @@ button.secondary:hover {
   min-width: 0;
   gap: 1px;
   border: 1px solid rgba(52, 211, 153, 0.18);
-  border-radius: 8px;
-  padding: 4px 5px;
+  border-radius: 7px;
+  padding: 3px 4px;
   color: #bbf7d0;
   background: rgba(2, 8, 8, 0.62);
   box-shadow: none;
@@ -2491,7 +2491,7 @@ button.secondary:hover {
 }
 
 .weeklyNominationProject span {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 900;
 }
 
@@ -2499,14 +2499,14 @@ button.secondary:hover {
 .weeklyNominationEmpty,
 .weeklyNominationPrompt {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 9px;
   line-height: 1.35;
 }
 
 .weeklyNominationEmpty {
   border: 1px dashed rgba(52, 211, 153, 0.18);
-  border-radius: 12px;
-  padding: 8px;
+  border-radius: 9px;
+  padding: 5px;
   background: rgba(2, 8, 8, 0.34);
 }
 
@@ -2515,9 +2515,9 @@ button.secondary:hover {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
+  gap: 4px;
   border-top: 1px solid rgba(52, 211, 153, 0.14);
-  padding-top: 6px;
+  padding-top: 4px;
 }
 
 .calendarShell {
@@ -4457,7 +4457,7 @@ dialog::backdrop {
   }
 
   .weeklyNominationGrid {
-    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .bpLeaderboardGrid {
