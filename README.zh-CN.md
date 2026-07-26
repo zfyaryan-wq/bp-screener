@@ -1,8 +1,8 @@
-# BP 快速筛选工具
+# VRT BP Screener
 
 [English](README.md) | **中文**
 
-BP Screener 是一套轻量级 BP / 商业计划书筛选工具，适合学生团队、天使社群和小型研究小组，用较低成本快速处理大量项目材料，而不必搭建完整投研平台。
+VRT BP Screener 是一套轻量级 BP / 商业计划书筛选工具，适合学生团队、天使社群和小型研究小组，用较低成本快速处理大量项目材料，而不必搭建完整投研平台。
 
 ## 关于项目
 
@@ -15,7 +15,7 @@ BP Screener 是一套轻量级 BP / 商业计划书筛选工具，适合学生�
 - 支持批量导入 `PDF / PPTX / DOCX / TXT / MD`
 - 使用 PyMuPDF 做快速 PDF 文本抽取，并可配置 `pypdf` 兜底
 - 支持对扫描版 PDF 做可选本地 OCR 兜底
-- 支持通过硅基流动、DeepSeek 或其他 OpenAI-compatible 接口做结构化字段抽取
+- 支持通过 ModelBest LLM Center / DeepSeek 或其他 OpenAI-compatible 接口做结构化字段抽取
 - 线上应用使用 Cloudflare D1 保存项目档案和团队协作状态
 - 本地 SQLite 用于导入、开发和导出中转
 - 使用 SQLite FTS 对文档片段做关键词全文检索
@@ -28,22 +28,33 @@ BP Screener 是一套轻量级 BP / 商业计划书筛选工具，适合学生�
 
 ```mermaid
 flowchart LR
-    A[BP 文件] --> B[飞书云盘 / 本地入口目录]
-    B --> C[导入管道]
-    C --> D[文档解析]
-    D --> E[文本页与片段]
-    E --> F[模型抽取]
-    E --> G[本地 SQLite / FTS 中转]
-    F --> H[结构化项目档案]
-    H --> I[Cloudflare D1 主库]
-    G --> I
-    I --> J[Pages Worker API]
-    J --> K[Cloudflare Pages Web 工作台]
-    K --> L[团队评审流程]
+    A[BP / Pitch Deck 文件] --> B[飞书云盘原文件仓库]
+    A --> C[本地入口目录]
+    B --> D[上传与同步任务]
+    C --> E[Python 本地导入管道]
+    E --> F[解析与翻译]
+    D --> I[Cloudflare Worker API]
+    F --> G[ModelBest LLM Center / DeepSeek V4 Flash]
+    G --> H[结构化档案、推荐、评分草稿]
+    H --> J[Cloudflare D1 主库]
+    E --> K[本地 SQLite / FTS 中转]
+    K --> J
+    I --> J
+    J --> I
+    I --> L[Cloudflare Pages 静态站点]
+    L --> M[团队筛选流程]
+    I --> N[受保护的 Wake / Workbench API]
 
-    M[硅基流动 / DeepSeek] --> F
-    N[VRT Agent] -. 推荐、总结、生成草稿 .-> J
+    O[飞书 Bitable] -. 可选同步与人工维护 .-> J
 ```
+
+线上生产前端是 Cloudflare Pages 静态站点，主要文件在 `web/index.html`、`web/app.js`、`web/styles.css`。后端 API 是 Cloudflare Worker，入口为 `web/_worker.js`，负责项目列表、筛选、推荐、评分草稿、协作、上传、wake 和 workbench 等接口。
+
+Cloudflare D1 是线上系统主数据源，保存项目档案、双语 profile、评分、评论、提名、浏览记录、BP 标记、个人访问码和 session 等数据。飞书主要作为 BP 原文件仓库；Bitable 可以辅助同步或人工维护，但结构化筛选数据和协作状态以 D1 为主。
+
+`bp_screener/` 和 `scripts/` 里的 Python 代码负责本地抽取、解析、翻译、飞书同步、D1 导出和运维同步任务。`app.py` 仍可作为本地/遗留 Streamlit workbench 使用，但不是生产主 UI。
+
+LLM 通过 ModelBest LLM Center / DeepSeek V4 Flash 提供抽取、双语 profile、推荐、评分草稿和总结能力；最终评分和筛选结论由团队成员人工确认。
 
 ## 目录结构
 
@@ -248,12 +259,12 @@ python scripts\notion_sync.py sync --limit 10
 
 ## Cloudflare 网页部署
 
-仓库里已经加入 Cloudflare 版本的网页层：
+仓库里已经包含 VRT BP Screener 的生产 Cloudflare 网页层：
 
-- `web/`：用于 Cloudflare Pages 的静态前端
-- `web/_worker.js`：负责 API、会话鉴权、wake 代理和静态资源的 Pages Worker
-- `cloudflare/schema.sql`：D1 数据表结构
-- `scripts/sync_to_d1.py`：把本地 SQLite 结果导出成 D1 可导入 SQL
+- `web/index.html`、`web/app.js`、`web/styles.css`：Cloudflare Pages 静态前端
+- `web/_worker.js`：Worker API，负责项目数据、筛选、推荐、评分草稿、协作、上传、wake、workbench、会话鉴权和静态资源
+- `cloudflare/schema.sql`：线上 D1 主数据库的数据表结构
+- `scripts/sync_to_d1.py`：把本地管道结果导出成 D1 可导入 SQL
 - `wrangler.toml`：Pages + D1 绑定配置模板
 - `docs/architecture-runbook.md`：生产数据和运维边界说明
 
@@ -290,7 +301,7 @@ python scripts\sync_to_d1.py
 npx wrangler d1 execute bp-screener --remote --file data\d1_seed.sql
 ```
 
-不要在生产 D1 上运行 destructive schema seed/reset。完整 schema reset 现在必须同时传 `--reset-schema` 和 `--allow-drop`，只应在临时环境或明确批准时使用：
+D1 是线上系统的主库。`scripts/sync_to_d1.py` 默认不会执行 destructive reset；生产 DROP/reset 必须有明确授权。完整 schema reset 现在必须同时传 `--reset-schema` 和 `--allow-drop`，只应在临时环境或明确批准时使用：
 
 ```powershell
 python scripts\sync_to_d1.py --reset-schema --allow-drop --execute
@@ -308,7 +319,7 @@ npx wrangler pages deploy web --project-name bp-screener
 npx wrangler pages secret put BP_ACCESS_CODES --project-name bp-screener
 ```
 
-如果缺少 `BP_ACCESS_CODES` 且 D1 里也没有个人访问码，敏感 API 会返回明确配置错误，不会只信任 `x-bp-user`。静态页面可以加载，但项目数据、`/api/wake/*` 和 `/workbench` 仍受保护。
+登录采用 5 人个人访问码加 Worker session token 的极简方案。如果缺少 `BP_ACCESS_CODES` 且 D1 里也没有个人访问码，敏感 API 会返回明确配置错误，不会只信任 `x-bp-user`。静态页面可以加载，但项目数据、`/api/wake/*` 和 `/workbench` 仍受保护。
 
 你需要准备：
 
@@ -328,8 +339,8 @@ npx wrangler pages secret put BP_ACCESS_CODES --project-name bp-screener
 
 ## 路线图
 
-- 增加扫描版 PDF 的 OCR
-- 增加向量搜索和语义检索
-- 增加项目对比视图
-- 增加原文页预览链接
-- 增加飞书云盘、OneDrive、OSS 或 COS 连接器
+- 随着线上 API 增长，把 Worker 拆成更清晰的模块
+- 将批量 LLM 抽取、推荐和总结任务队列化
+- 增加评分、协作、访问码和管理操作的 audit log
+- 为线上 D1 项目库增加语义搜索能力
+- 持续完善飞书同步和可选 Bitable 人工维护流程

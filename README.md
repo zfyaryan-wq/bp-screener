@@ -1,8 +1,8 @@
-# BP Screener Workbench
+# VRT BP Screener
 
 **English** | [中文](README.zh-CN.md)
 
-BP Screener Workbench is a lightweight shared workspace for a student team reviewing large batches of business plans and pitch decks.
+VRT BP Screener is a lightweight shared workspace for a student team reviewing large batches of business plans and pitch decks.
 
 ## About
 
@@ -15,7 +15,7 @@ It is intentionally small, low-cost, and easy for a five-person team to use. The
 - Batch ingestion for `PDF / PPTX / DOCX / TXT / MD`
 - Fast PyMuPDF-based PDF text extraction with `pypdf` fallback available
 - Optional local OCR fallback for scanned PDFs
-- LLM-powered structured extraction through SiliconFlow, DeepSeek, or any OpenAI-compatible endpoint
+- LLM-powered structured extraction through ModelBest LLM Center / DeepSeek or any OpenAI-compatible endpoint
 - Cloudflare D1 project database for the hosted app
 - Local SQLite for ingestion, development, and export staging
 - SQLite FTS keyword search over extracted document chunks
@@ -28,22 +28,33 @@ It is intentionally small, low-cost, and easy for a five-person team to use. The
 
 ```mermaid
 flowchart LR
-    A[Pitch Deck Files] --> B[Feishu Drive / Local Inbox]
-    B --> C[Ingestion Pipeline]
-    C --> D[Document Parsers]
-    D --> E[Text Pages and Chunks]
-    E --> F[LLM Extractor]
-    E --> G[Local SQLite / FTS Staging]
-    F --> H[Structured Project Profiles]
-    H --> I[Cloudflare D1 Primary DB]
-    G --> I
-    I --> J[Pages Worker API]
-    J --> K[Cloudflare Pages Web App]
-    K --> L[Team Review Workflow]
+    A[BP / Pitch Deck Files] --> B[Feishu Drive File Archive]
+    A --> C[Local Inbox]
+    B --> D[Upload and Sync Jobs]
+    C --> E[Python Ingestion Pipeline]
+    E --> F[Parsers and Translators]
+    D --> I[Cloudflare Worker API]
+    F --> G[ModelBest LLM Center / DeepSeek V4 Flash]
+    G --> H[Structured Profiles, Recommendations, Draft Scores]
+    H --> J[Cloudflare D1 Primary DB]
+    E --> K[Local SQLite / FTS Staging]
+    K --> J
+    I --> J
+    J --> I
+    I --> L[Cloudflare Pages Static App]
+    L --> M[Team Screening Workflow]
+    I --> N[Protected Wake / Workbench APIs]
 
-    M[SiliconFlow / DeepSeek] --> F
-    N[VRT Agent] -. recommends, summarizes, drafts .-> J
+    O[Feishu Bitable] -. optional sync and manual maintenance .-> J
 ```
+
+The production app is a Cloudflare Pages static site (`web/index.html`, `web/app.js`, `web/styles.css`) backed by a Cloudflare Worker API (`web/_worker.js`). The Worker serves project listing, filters, recommendations, score drafts, collaboration, upload, wake, and workbench endpoints.
+
+Cloudflare D1 is the primary online data source. It stores project records, bilingual profiles, scores, comments, nominations, views, BP marks, personal access codes, and session records. Feishu is mainly the original BP file archive; Bitable can assist with sync or manual maintenance, but collaboration state and structured screening data live in D1.
+
+The Python code in `bp_screener/` and `scripts/` is the local data pipeline for extraction, parsing, translation, Feishu sync, D1 export, and operational sync jobs. `app.py` remains a local/legacy Streamlit workbench, not the production UI.
+
+LLM features call ModelBest LLM Center / DeepSeek V4 Flash for extraction, bilingual profiles, recommendations, draft scores, and summaries. Human reviewers make the final screening and scoring decisions.
 
 ## Repository Layout
 
@@ -248,12 +259,12 @@ Running `sync` repeatedly updates the same Notion pages instead of creating dupl
 
 ## Cloudflare Web Deployment
 
-This repository includes a Cloudflare-ready web layer:
+This repository includes the production Cloudflare web layer for VRT BP Screener:
 
-- `web/`: static frontend for Cloudflare Pages
-- `web/_worker.js`: API, session auth, wake proxy, and static asset worker
-- `cloudflare/schema.sql`: D1 schema
-- `scripts/sync_to_d1.py`: export local SQLite results into D1 import SQL
+- `web/index.html`, `web/app.js`, `web/styles.css`: Cloudflare Pages static frontend
+- `web/_worker.js`: Worker API for project data, filters, recommendations, score drafts, collaboration, uploads, wake, workbench, session auth, and static assets
+- `cloudflare/schema.sql`: D1 schema for the primary online database
+- `scripts/sync_to_d1.py`: export local pipeline results into D1 import SQL
 - `wrangler.toml`: Pages + D1 binding template
 - `docs/architecture-runbook.md`: production data and operational guardrails
 
@@ -290,7 +301,7 @@ python scripts\sync_to_d1.py
 npx wrangler d1 execute bp-screener --remote --file data\d1_seed.sql
 ```
 
-Do not run destructive schema seed/reset commands against production. A full schema reset now requires both `--reset-schema` and `--allow-drop`, for example only in a disposable environment:
+Treat D1 as the source of truth for the hosted system. `scripts/sync_to_d1.py` does not run destructive reset commands by default; production DROP/reset operations require explicit authorization. A full schema reset requires both `--reset-schema` and `--allow-drop`, for example only in a disposable environment:
 
 ```powershell
 python scripts\sync_to_d1.py --reset-schema --allow-drop --execute
@@ -308,7 +319,7 @@ After creating the Cloudflare Pages project, add the production access-code conf
 npx wrangler pages secret put BP_ACCESS_CODES --project-name bp-screener
 ```
 
-If `BP_ACCESS_CODES` and personal D1 access codes are missing, sensitive API requests return an explicit configuration error instead of trusting `x-bp-user`. The static page can load, but project data, `/api/wake/*`, and `/workbench` remain protected.
+Login uses per-member access codes and Worker-issued session tokens. If `BP_ACCESS_CODES` and personal D1 access codes are missing, sensitive API requests return an explicit configuration error instead of trusting `x-bp-user`. The static page can load, but project data, `/api/wake/*`, and `/workbench` remain protected.
 
 You need to provide:
 
@@ -328,8 +339,8 @@ You need to provide:
 
 ## Roadmap
 
-- Add OCR for scanned PDFs
-- Add vector search and semantic retrieval
-- Add project comparison views
-- Add source-page preview links
-- Add Feishu Drive, OneDrive, OSS, or COS connectors
+- Split the Worker into smaller API modules as the web surface grows
+- Queue bulk LLM extraction, recommendations, and summary jobs
+- Add audit logs for scoring, collaboration, access-code, and admin changes
+- Add online semantic search for the hosted D1-backed project library
+- Keep improving Feishu sync and optional Bitable maintenance workflows
