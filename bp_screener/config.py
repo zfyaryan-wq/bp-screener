@@ -41,3 +41,9 @@ RAG_KEYWORD_PREFILTER_LIMIT = int(os.getenv("RAG_KEYWORD_PREFILTER_LIMIT", "80")
 RAG_SEMANTIC_MAX_ROWS = int(os.getenv("RAG_SEMANTIC_MAX_ROWS", "20000"))
 RAG_QA_CACHE_ENABLED = os.getenv("RAG_QA_CACHE_ENABLED", "true").lower() == "true"
 
+FEISHU_APP_ID = os.getenv("FEISHU_APP_ID", "").strip()
+FEISHU_APP_SECRET = os.getenv("FEISHU_APP_SECRET", "").strip()
+FEISHU_BP_FOLDER_TOKEN = os.getenv("FEISHU_BP_FOLDER_TOKEN", "").strip()
+FEISHU_BASE_APP_TOKEN = os.getenv("FEISHU_BASE_APP_TOKEN", "").strip()
+FEISHU_BASE_TABLE_ID = os.getenv("FEISHU_BASE_TABLE_ID", "").strip()
+

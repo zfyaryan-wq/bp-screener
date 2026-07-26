@@ -20,13 +20,23 @@ function Stop-ExistingWorkbench {
             $_.ProcessId -ne $currentPid -and
             $_.CommandLine -and
             $_.CommandLine -match $escapedRoot -and
-            ($_.CommandLine -match "streamlit\.exe|cloudflared\.exe|start_share\.ps1|heartbeat\.ps1|tunnel --protocol|tunnel --url")
+            ($_.CommandLine -match "streamlit\.exe|python\.exe.*streamlit|cloudflared\.exe|start_share\.ps1|heartbeat\.ps1|tunnel --protocol|tunnel --url")
         } |
         ForEach-Object {
             try {
                 Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop
             } catch {
                 Write-Host "Could not stop process $($_.ProcessId): $($_.Exception.Message)"
+            }
+        }
+
+    Get-NetTCPConnection -LocalPort 8501 -State Listen -ErrorAction SilentlyContinue |
+        Where-Object { $_.OwningProcess -and $_.OwningProcess -ne $currentPid } |
+        ForEach-Object {
+            try {
+                Stop-Process -Id $_.OwningProcess -Force -ErrorAction Stop
+            } catch {
+                Write-Host "Could not stop port 8501 owner $($_.OwningProcess): $($_.Exception.Message)"
             }
         }
 }

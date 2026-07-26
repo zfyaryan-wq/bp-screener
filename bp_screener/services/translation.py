@@ -27,6 +27,8 @@ def translate_project_profile(
                     "You translate BP screening profiles for a small student review team. "
                     f"Translate project profile fields into clear, professional {target_language}. "
                     "Preserve factual meaning and do not add new facts. "
+                    "Translate every user-facing string, including recommendation, risk_level, tags, evidence field names, "
+                    "and list items. For English use High/Medium/Low/Unknown. For Chinese use 高/中/低/未知. "
                     "Return valid JSON only."
                 ),
             },
@@ -34,8 +36,7 @@ def translate_project_profile(
                 "role": "user",
                 "content": (
                     f"Translate this structured BP profile into {target_language}. Preserve the same JSON keys. "
-                    "Keep recommendation unchanged as one of 高 / 中 / 低 / 未知. "
-                    "Keep ai_related as a boolean. Translate evidence.quote for readability.\n\n"
+                    "Keep ai_related as a boolean and numeric scores as numbers. Translate evidence.quote for readability.\n\n"
                     f"Project profile:\n{json.dumps(project, ensure_ascii=False)}\n\n"
                     f"Optional source snippets:\n{json.dumps(snippets, ensure_ascii=False)}"
                 ),

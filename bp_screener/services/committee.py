@@ -20,7 +20,7 @@ def generate_committee_review(project: dict, chunks: list[dict] | None = None) -
             {
                 "role": "system",
                 "content": (
-                    "You are an AI investment committee for a four-person student BP review team. "
+                    "You are a VRT Agent investment committee for a student BP review team. "
                     "Review startup pitch decks with multiple analyst roles. Be evidence-based, skeptical, "
                     "and useful for deciding whether the team should spend time on follow-up. "
                     "Do not invent facts. If evidence is missing, say so. Return valid JSON only."
@@ -35,7 +35,7 @@ def generate_committee_review(project: dict, chunks: list[dict] | None = None) -
                     "decision: one of Priority, Discuss, Pass, Reject, More info needed;\n"
                     "summary: concise final committee view;\n"
                     "analyst_reviews: array of objects with role, score, view, evidence, concerns. "
-                    "Roles must include Market Analyst, Product Analyst, AI Analyst, Team Analyst, "
+                    "Roles must include Market Analyst, Product Analyst, VRT Agent Analyst, Team Analyst, "
                     "Traction Analyst, Risk Analyst;\n"
                     "red_team: skeptical critique of why this project may fail or be overstated;\n"
                     "key_questions: array of questions to ask the founder;\n"

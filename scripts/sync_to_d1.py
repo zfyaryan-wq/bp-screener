@@ -3,10 +3,15 @@ from __future__ import annotations
 import argparse
 import sqlite3
 import subprocess
+import sys
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from bp_screener.db import migrate_schema
+
 DEFAULT_LOCAL_DB = ROOT / "data" / "bp_screener.sqlite"
 DEFAULT_SCHEMA = ROOT / "cloudflare" / "schema.sql"
 DEFAULT_OUTPUT = ROOT / "data" / "d1_seed.sql"
@@ -44,24 +49,42 @@ def export_seed(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(local_db)
     conn.row_factory = sqlite3.Row
+    migrate_schema(conn)
 
-    document_columns = ["id", "file_name", "source_url", "file_size", "created_at", "updated_at"]
+    document_columns = [
+        "id",
+        "file_name",
+        "source_url",
+        "file_size",
+        "source_platform",
+        "source_external_id",
+        "status",
+        "created_at",
+        "updated_at",
+    ]
     project_columns = [
         "id",
         "document_id",
         "project_name",
         "company_name",
         "industry",
+        "country_or_region",
         "ai_related",
         "ai_category",
         "financing_stage",
         "business_model",
+        "customer_type",
+        "revenue_stage",
         "team_highlights",
         "traction",
         "customers_or_users",
         "revenue_or_financials",
         "one_line_summary",
         "recommendation",
+        "screening_score",
+        "team_score",
+        "traction_score",
+        "risk_level",
         "risks",
         "tags",
         "evidence",
@@ -69,6 +92,20 @@ def export_seed(
         "updated_at",
     ]
     chunk_columns = ["id", "document_id", "page", "chunk_index", "content"]
+    translation_columns = ["document_id", "lang", "profile_json", "created_at", "updated_at"]
+    weight_factor_columns = [
+        "id",
+        "key",
+        "name",
+        "description",
+        "category",
+        "scope",
+        "owner",
+        "created_at",
+        "updated_at",
+        "source_prompt",
+        "metadata_json",
+    ]
 
     with output_path.open("w", encoding="utf-8") as handle:
         handle.write(schema_path.read_text(encoding="utf-8"))
@@ -81,7 +118,11 @@ def export_seed(
               id,
               file_name,
               file_path,
+              source_url,
               file_size,
+              source_platform,
+              source_external_id,
+              status,
               created_at,
               updated_at
             FROM documents
@@ -90,7 +131,9 @@ def export_seed(
             """
         ):
             payload = dict(row)
-            payload["source_url"] = object_key(payload["id"], payload["file_name"]) if include_file_keys else None
+            payload["source_url"] = payload.get("source_url") or (
+                object_key(payload["id"], payload["file_name"]) if include_file_keys else None
+            )
             handle.write(row_insert("documents", document_columns, payload) + "\n")
 
         for row in conn.execute("SELECT * FROM projects ORDER BY id"):
@@ -106,6 +149,25 @@ def export_seed(
             (max_chunks,),
         ):
             handle.write(row_insert("chunks", chunk_columns, row) + "\n")
+
+        for row in conn.execute(
+            """
+            SELECT document_id, lang, profile_json, created_at, updated_at
+            FROM project_translations
+            ORDER BY document_id, lang
+            """
+        ):
+            handle.write(row_insert("project_translations", translation_columns, row) + "\n")
+
+        for row in conn.execute(
+            """
+            SELECT id, key, name, description, category, scope, owner,
+                   created_at, updated_at, source_prompt, metadata_json
+            FROM weight_factors
+            ORDER BY id
+            """
+        ):
+            handle.write(row_insert("weight_factors", weight_factor_columns, row) + "\n")
 
         if include_transaction:
             handle.write("COMMIT;\n")

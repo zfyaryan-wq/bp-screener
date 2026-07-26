@@ -14,6 +14,9 @@ SELECT
   p.*,
   d.file_name,
   d.file_path,
+  d.source_platform,
+  d.source_external_id,
+  d.source_url,
   COALESCE(r.review_status, '待看') AS review_status,
   COALESCE(r.owner, '') AS owner,
   COALESCE(c.overall_score, '') AS committee_score,
@@ -29,6 +32,10 @@ def project_filter_clause(
     industry: str = "",
     stage: str = "",
     recommendation: str = "",
+    country: str = "",
+    customer_type: str = "",
+    revenue_stage: str = "",
+    risk_level: str = "",
     ai_only: bool = False,
 ) -> tuple[str, list[Any]]:
     clauses: list[str] = ["d.deleted_at IS NULL"]
@@ -42,9 +49,54 @@ def project_filter_clause(
     if recommendation:
         clauses.append("p.recommendation = ?")
         params.append(recommendation)
+    if country:
+        clauses.append("LOWER(p.country_or_region) LIKE ?")
+        params.append(f"%{country.lower()}%")
+    if customer_type:
+        clauses.append("LOWER(p.customer_type) LIKE ?")
+        params.append(f"%{customer_type.lower()}%")
+    if revenue_stage:
+        clauses.append("LOWER(p.revenue_stage) LIKE ?")
+        params.append(f"%{revenue_stage.lower()}%")
+    if risk_level:
+        clauses.append("p.risk_level = ?")
+        params.append(risk_level)
     if ai_only:
         clauses.append("p.ai_related = 1")
     return " WHERE " + " AND ".join(clauses), params
+
+
+def project_sort_clause(sort_by: str = "updated_desc") -> str:
+    clauses = {
+        "updated_desc": "p.updated_at DESC, p.document_id DESC",
+        "screening_score_desc": "p.screening_score DESC, p.updated_at DESC, p.document_id DESC",
+        "team_score_desc": "p.team_score DESC, p.updated_at DESC, p.document_id DESC",
+        "traction_score_desc": "p.traction_score DESC, p.updated_at DESC, p.document_id DESC",
+        "committee_score_desc": "CAST(COALESCE(c.overall_score, 0) AS INTEGER) DESC, p.updated_at DESC, p.document_id DESC",
+        "recommendation_desc": """
+            CASE p.recommendation
+              WHEN '高' THEN 3
+              WHEN '中' THEN 2
+              WHEN '低' THEN 1
+              ELSE 0
+            END DESC,
+            p.screening_score DESC,
+            p.updated_at DESC,
+            p.document_id DESC
+        """,
+        "risk_low_first": """
+            CASE p.risk_level
+              WHEN '低' THEN 1
+              WHEN '中' THEN 2
+              WHEN '高' THEN 3
+              ELSE 4
+            END ASC,
+            p.screening_score DESC,
+            p.updated_at DESC,
+            p.document_id DESC
+        """,
+    }
+    return clauses.get(sort_by, clauses["updated_desc"])
 
 
 def list_projects(
@@ -52,14 +104,24 @@ def list_projects(
     industry: str = "",
     stage: str = "",
     recommendation: str = "",
+    country: str = "",
+    customer_type: str = "",
+    revenue_stage: str = "",
+    risk_level: str = "",
     ai_only: bool = False,
+    sort_by: str = "updated_desc",
 ) -> list[dict[str, Any]]:
     return list_projects_page(
         conn,
         industry=industry,
         stage=stage,
         recommendation=recommendation,
+        country=country,
+        customer_type=customer_type,
+        revenue_stage=revenue_stage,
+        risk_level=risk_level,
         ai_only=ai_only,
+        sort_by=sort_by,
         limit=None,
         offset=0,
     )
@@ -70,11 +132,26 @@ def list_projects_page(
     industry: str = "",
     stage: str = "",
     recommendation: str = "",
+    country: str = "",
+    customer_type: str = "",
+    revenue_stage: str = "",
+    risk_level: str = "",
     ai_only: bool = False,
+    sort_by: str = "updated_desc",
     limit: int | None = 50,
     offset: int = 0,
 ) -> list[dict[str, Any]]:
-    where_sql, params = project_filter_clause(industry, stage, recommendation, ai_only)
+    where_sql, params = project_filter_clause(
+        industry,
+        stage,
+        recommendation,
+        country,
+        customer_type,
+        revenue_stage,
+        risk_level,
+        ai_only,
+    )
+    order_sql = project_sort_clause(sort_by)
     limit_sql = ""
     if limit is not None:
         limit_sql = " LIMIT ? OFFSET ?"
@@ -83,7 +160,7 @@ def list_projects_page(
         f"""
         {PROJECT_LIST_SELECT}
         {where_sql}
-        ORDER BY p.updated_at DESC, p.document_id DESC
+        ORDER BY {order_sql}
         {limit_sql}
         """,
         params,
@@ -96,9 +173,22 @@ def count_projects(
     industry: str = "",
     stage: str = "",
     recommendation: str = "",
+    country: str = "",
+    customer_type: str = "",
+    revenue_stage: str = "",
+    risk_level: str = "",
     ai_only: bool = False,
 ) -> int:
-    where_sql, params = project_filter_clause(industry, stage, recommendation, ai_only)
+    where_sql, params = project_filter_clause(
+        industry,
+        stage,
+        recommendation,
+        country,
+        customer_type,
+        revenue_stage,
+        risk_level,
+        ai_only,
+    )
     row = conn.execute(
         f"""
         SELECT COUNT(*) AS count

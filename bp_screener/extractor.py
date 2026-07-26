@@ -11,7 +11,7 @@ from .models import ProjectProfile
 from .llm_json import loads_llm_json
 
 
-SYSTEM_PROMPT = """You are a BP screening assistant for a four-person student deal-review team.
+SYSTEM_PROMPT = """You are a BP screening assistant for a student deal-review team.
 Extract only what is supported by the provided BP text. Do not invent facts.
 Return all structured profile fields in concise professional English, even if the deck is written in Chinese.
 Keep evidence.quote in the original source language because it must be a verbatim quote from the deck.
@@ -21,9 +21,11 @@ The output must be valid JSON only. Do not return Markdown."""
 
 
 USER_PROMPT = """Extract the BP text below into JSON with these fields:
-project_name, company_name, industry, ai_related, ai_category, financing_stage,
-business_model, team_highlights, traction, customers_or_users, revenue_or_financials,
-one_line_summary, recommendation, risks, tags, evidence。
+project_name, company_name, industry, country_or_region, ai_related, ai_category,
+financing_stage, business_model, customer_type, revenue_stage, team_highlights,
+traction, customers_or_users, revenue_or_financials, one_line_summary,
+recommendation, screening_score, team_score, traction_score, risk_level, risks,
+tags, evidence。
 
 Screening focus:
 1. What industry or sector the project belongs to.
@@ -31,6 +33,12 @@ Screening focus:
 3. Whether the team has credible signals such as top universities, big tech, research background, serial entrepreneurship, or industry resources.
 4. Current traction, including product stage, customers, revenue, users, and financing stage.
 5. Business model, main risks, and whether the project is worth follow-up for a small student review group.
+6. Add screening_score, team_score, and traction_score as integers from 0 to 100.
+7. risk_level must be one of 高 / 中 / 低 / 未知.
+8. customer_type should be concise, such as B2B, B2C, B2B2C, Government, Hospital, School, Enterprise, Consumer, or Unknown.
+9. revenue_stage should be concise, such as No revenue, Pilot, Early revenue, Scaling revenue, Profitable, or Unknown.
+10. tags must be 8-16 concise search keywords for retrieval. Include industry, product type, target customer,
+    technology, country/region, business model, traction signal, and common English/Chinese synonyms when useful.
 
 Language rule:
 - Structured profile fields should be in English.
@@ -79,8 +87,11 @@ def normalize_llm_payload(data: dict) -> dict:
         "project_name",
         "company_name",
         "industry",
+        "country_or_region",
         "financing_stage",
         "business_model",
+        "customer_type",
+        "revenue_stage",
         "customers_or_users",
         "revenue_or_financials",
         "one_line_summary",
@@ -96,6 +107,11 @@ def normalize_llm_payload(data: dict) -> dict:
 
     if defaults["recommendation"] not in {"高", "中", "低", "未知"}:
         defaults["recommendation"] = "未知"
+    defaults["risk_level"] = normalize_string(defaults.get("risk_level"), default="未知")
+    if defaults["risk_level"] not in {"高", "中", "低", "未知"}:
+        defaults["risk_level"] = "未知"
+    for key in ["screening_score", "team_score", "traction_score"]:
+        defaults[key] = normalize_score(defaults.get(key))
     return defaults
 
 
@@ -119,6 +135,13 @@ def normalize_bool(value: object) -> bool:
         return False
     text = str(value).strip().lower()
     return text in {"true", "yes", "y", "1", "是", "相关", "ai", "有"}
+
+
+def normalize_score(value: object) -> int:
+    try:
+        return max(0, min(100, int(float(str(value).strip()))))
+    except (TypeError, ValueError):
+        return 0
 
 
 def normalize_list(value: object, key: str) -> list:
@@ -171,20 +194,46 @@ def heuristic_profile(text: str) -> ProjectProfile:
     stage = next((word for word in stage_keywords if word.lower() in compact.lower()), "未知")
     business_model = next((word for word in model_keywords if word.lower() in compact.lower()), "未知")
     ai_related = any(word.lower() in compact.lower() for word in ai_keywords)
-    tags = [word for word in ai_keywords + stage_keywords + model_keywords if word.lower() in compact.lower()]
+    tags = [
+        *[word for word in ai_keywords + stage_keywords + model_keywords if word.lower() in compact.lower()],
+        guess_industry(compact),
+        guess_country_or_region(compact),
+        guess_customer_type(compact),
+        guess_revenue_stage(compact),
+    ]
 
     return ProjectProfile(
         project_name=guess_name(compact),
         company_name="未知",
         industry=guess_industry(compact),
+        country_or_region=guess_country_or_region(compact),
         ai_related=ai_related,
         ai_category=[word for word in ai_keywords if word.lower() in compact.lower()],
         financing_stage=stage,
         business_model=business_model,
+        customer_type=guess_customer_type(compact),
+        revenue_stage=guess_revenue_stage(compact),
         one_line_summary=compact[:160],
         recommendation="未知",
-        tags=tags[:12],
+        screening_score=heuristic_score(compact, ai_related, stage, business_model),
+        team_score=heuristic_team_score(compact),
+        traction_score=heuristic_traction_score(compact),
+        risk_level="未知",
+        tags=dedupe(tags)[:16],
     )
+
+
+def dedupe(items: list[str]) -> list[str]:
+    seen = set()
+    result = []
+    for item in items:
+        text = str(item).strip()
+        key = text.lower()
+        if not text or text == "未知" or key in seen:
+            continue
+        seen.add(key)
+        result.append(text)
+    return result
 
 
 def guess_name(text: str) -> str:
@@ -203,4 +252,55 @@ def guess_industry(text: str) -> str:
     industries = ["医疗", "教育", "金融", "消费", "企业服务", "机器人", "芯片", "新能源", "电商", "游戏", "文娱"]
     found = [industry for industry in industries if industry in text]
     return " / ".join(found[:3]) if found else "未知"
+
+
+def guess_country_or_region(text: str) -> str:
+    regions = ["中国", "美国", "欧洲", "英国", "德国", "法国", "日本", "韩国", "新加坡", "以色列", "Canada", "US", "USA", "Europe"]
+    found = [region for region in regions if region.lower() in text.lower()]
+    return found[0] if found else "未知"
+
+
+def guess_customer_type(text: str) -> str:
+    lower = text.lower()
+    if "b2b2c" in lower:
+        return "B2B2C"
+    if any(word in lower for word in ["b2b", "enterprise", "企业", "医院", "学校", "政府"]):
+        return "B2B"
+    if any(word in lower for word in ["b2c", "consumer", "用户", "消费者"]):
+        return "B2C"
+    return "未知"
+
+
+def guess_revenue_stage(text: str) -> str:
+    lower = text.lower()
+    if any(word in lower for word in ["profitable", "盈利", "利润"]):
+        return "Profitable"
+    if any(word in lower for word in ["revenue", "收入", "营收", "sales", "合同"]):
+        return "Early revenue"
+    if any(word in lower for word in ["pilot", "试点", "poc"]):
+        return "Pilot"
+    return "未知"
+
+
+def heuristic_team_score(text: str) -> int:
+    signals = ["博士", "phd", "教授", "清华", "北大", "mit", "stanford", "google", "microsoft", "serial", "连续创业"]
+    return min(100, 20 + 12 * sum(1 for signal in signals if signal.lower() in text.lower()))
+
+
+def heuristic_traction_score(text: str) -> int:
+    signals = ["客户", "用户", "收入", "营收", "合同", "pilot", "poc", "融资", "revenue", "customer", "users"]
+    return min(100, 15 + 10 * sum(1 for signal in signals if signal.lower() in text.lower()))
+
+
+def heuristic_score(text: str, ai_related: bool, stage: str, business_model: str) -> int:
+    score = 20
+    if ai_related:
+        score += 15
+    if stage != "未知":
+        score += 10
+    if business_model != "未知":
+        score += 10
+    score += int(0.25 * heuristic_team_score(text))
+    score += int(0.25 * heuristic_traction_score(text))
+    return min(100, score)
 

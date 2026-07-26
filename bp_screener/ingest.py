@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from .config import INBOX_DIR
-from .db import connect, get_document_for_path, mark_failed, replace_chunks, upsert_document, upsert_project
+from .db import connect, get_document_for_path, mark_failed, replace_chunks, save_project_translation, upsert_document, upsert_project
 from .extractor import extract_profile
 from .parsers import SUPPORTED_SUFFIXES, chunk_pages, extract_pages, sample_for_llm
+from .services.translation import translate_project_profile
+
+
+def log(message: str) -> None:
+    encoding = sys.stdout.encoding or "utf-8"
+    safe_message = message.encode(encoding, errors="replace").decode(encoding, errors="replace")
+    print(safe_message, flush=True)
 
 
 def iter_files(path: Path) -> list[Path]:
@@ -38,7 +46,7 @@ def ingest_path(
                 and not existing.get("deleted_at")
                 and int(existing.get("file_size") or 0) == file_path.stat().st_size
             ):
-                print(f"[SKIP] {file_path.name}")
+                log(f"[SKIP] {file_path.name}")
                 continue
             document_id = upsert_document(conn, file_path)
             try:
@@ -47,14 +55,19 @@ def ingest_path(
                 replace_chunks(conn, document_id, file_path.name, chunks)
                 profile = extract_profile(sample_for_llm(pages), use_llm=use_llm)
                 upsert_project(conn, document_id, profile)
+                if use_llm:
+                    project_payload = profile.model_dump()
+                    for lang, target_language in {"en": "English", "zh": "Chinese"}.items():
+                        translated_profile = translate_project_profile(project_payload, chunks, target_language=target_language)
+                        save_project_translation(conn, document_id, translated_profile, lang=lang)
                 conn.commit()
                 ok += 1
-                print(f"[OK] {file_path.name}")
+                log(f"[OK] {file_path.name}")
             except Exception as exc:
                 mark_failed(conn, document_id, str(exc))
                 conn.commit()
                 failed += 1
-                print(f"[FAILED] {file_path.name}: {exc}")
+                log(f"[FAILED] {file_path.name}: {exc}")
     return ok, failed
 
 
@@ -67,7 +80,7 @@ def main() -> None:
     args = parser.parse_args()
 
     ok, failed = ingest_path(Path(args.path), use_llm=not args.no_llm, limit=args.limit, force=args.force)
-    print(f"完成：成功 {ok}，失败 {failed}")
+    log(f"完成：成功 {ok}，失败 {failed}")
 
 
 if __name__ == "__main__":

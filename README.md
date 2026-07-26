@@ -2,7 +2,7 @@
 
 **English** | [中文](README.zh-CN.md)
 
-BP Screener Workbench is a lightweight shared workspace for a four-person student team reviewing large batches of business plans and pitch decks.
+BP Screener Workbench is a lightweight shared workspace for a student team reviewing large batches of business plans and pitch decks.
 
 ## About
 
@@ -19,6 +19,7 @@ It is intentionally small, low-cost, and easy for four collaborators to use. The
 - Local SQLite project database
 - SQLite FTS keyword search over extracted document chunks
 - Streamlit workbench for upload, automatic analysis, search, filtering, detail view, project discussion, and export
+- Shopping-style project library filters and sorting for country/region, customer type, revenue stage, risk level, screening score, team score, and traction score
 - Evidence-first project profiles with source snippets when the model provides them
 - Storage-agnostic design for Feishu Drive, OneDrive, OSS, COS, or local folders
 
@@ -179,7 +180,7 @@ Force a rebuild:
 python scripts\build_semantic_index.py --force
 ```
 
-This follows the Open Notebook / NotebookLM idea while keeping BP Screener's vertical workflow: structured project profiles, investment screening fields, AI committee reviews, four-person collaboration, and Notion sync.
+This follows the Open Notebook / NotebookLM idea while keeping BP Screener's vertical workflow: structured project profiles, investment screening fields, AI committee reviews, team collaboration, and Notion sync.
 
 ## Acknowledgements
 
@@ -193,6 +194,12 @@ BP Screener is a focused student-team BP screening workbench. It is not a fork o
 
 The current entry point is `data/inbox/`. To add storage later, sync or download files into that directory, or change `BP_INBOX_DIR` in `.env`.
 
+For the current local BP folder on this machine:
+
+```env
+BP_INBOX_DIR=C:\Users\zfyar\.cursor\projects\BPs
+```
+
 Recommended options:
 
 - Feishu Drive: sync or download files into a local folder before ingestion.
@@ -201,7 +208,7 @@ Recommended options:
 
 ## Notion Collaboration Workspace
 
-Notion is a good collaboration front end for the four-person review team: project database, filtered views, manual reviews, AI committee decisions, and activity history. PDF parsing, LLM extraction, and full-text search still run in BP Screener, then structured results are synced to Notion.
+Notion is a good collaboration front end for the review team: project database, filtered views, manual reviews, AI committee decisions, and activity history. PDF parsing, LLM extraction, and full-text search still run in BP Screener, then structured results are synced to Notion.
 
 Create a blank parent page in Notion and share it with your Notion internal integration. Then configure `.env`:
 

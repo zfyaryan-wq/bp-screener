@@ -18,6 +18,9 @@ CREATE TABLE IF NOT EXISTS documents (
   file_name TEXT NOT NULL,
   file_path TEXT NOT NULL UNIQUE,
   file_size INTEGER NOT NULL DEFAULT 0,
+  source_platform TEXT NOT NULL DEFAULT '',
+  source_external_id TEXT NOT NULL DEFAULT '',
+  source_url TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL DEFAULT 'new',
   error TEXT,
   deleted_at TEXT,
@@ -31,16 +34,23 @@ CREATE TABLE IF NOT EXISTS projects (
   project_name TEXT NOT NULL,
   company_name TEXT NOT NULL,
   industry TEXT NOT NULL,
+  country_or_region TEXT NOT NULL DEFAULT '未知',
   ai_related INTEGER NOT NULL DEFAULT 0,
   ai_category TEXT NOT NULL DEFAULT '[]',
   financing_stage TEXT NOT NULL,
   business_model TEXT NOT NULL,
+  customer_type TEXT NOT NULL DEFAULT '未知',
+  revenue_stage TEXT NOT NULL DEFAULT '未知',
   team_highlights TEXT NOT NULL DEFAULT '[]',
   traction TEXT NOT NULL DEFAULT '[]',
   customers_or_users TEXT NOT NULL,
   revenue_or_financials TEXT NOT NULL,
   one_line_summary TEXT NOT NULL,
   recommendation TEXT NOT NULL,
+  screening_score INTEGER NOT NULL DEFAULT 0,
+  team_score INTEGER NOT NULL DEFAULT 0,
+  traction_score INTEGER NOT NULL DEFAULT 0,
+  risk_level TEXT NOT NULL DEFAULT '未知',
   risks TEXT NOT NULL DEFAULT '[]',
   tags TEXT NOT NULL DEFAULT '[]',
   evidence TEXT NOT NULL DEFAULT '[]',
@@ -59,12 +69,67 @@ CREATE TABLE IF NOT EXISTS chunks (
 );
 
 CREATE TABLE IF NOT EXISTS project_translations (
-  document_id INTEGER PRIMARY KEY,
+  document_id INTEGER NOT NULL,
   lang TEXT NOT NULL DEFAULT 'en',
   profile_json TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(document_id, lang),
   FOREIGN KEY(document_id) REFERENCES documents(id)
+);
+
+CREATE TABLE IF NOT EXISTS weight_profiles (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  owner TEXT NOT NULL,
+  title TEXT NOT NULL,
+  factors_json TEXT NOT NULL DEFAULT '[]',
+  prompt TEXT NOT NULL DEFAULT '',
+  source_profile_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(source_profile_id) REFERENCES weight_profiles(id)
+);
+
+CREATE TABLE IF NOT EXISTS weight_factors (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  key TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  category TEXT NOT NULL DEFAULT 'overall_fit',
+  scope TEXT NOT NULL DEFAULT 'personal',
+  owner TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  source_prompt TEXT NOT NULL DEFAULT '',
+  metadata_json TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS weight_profile_likes (
+  profile_id INTEGER NOT NULL,
+  actor TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(profile_id, actor),
+  FOREIGN KEY(profile_id) REFERENCES weight_profiles(id)
+);
+
+CREATE TABLE IF NOT EXISTS weight_profile_comments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  profile_id INTEGER NOT NULL,
+  actor TEXT NOT NULL,
+  content TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(profile_id) REFERENCES weight_profiles(id)
+);
+
+CREATE TABLE IF NOT EXISTS weight_profile_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  profile_id INTEGER NOT NULL,
+  actor TEXT NOT NULL,
+  action TEXT NOT NULL,
+  detail TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(profile_id) REFERENCES weight_profiles(id)
 );
 
 CREATE TABLE IF NOT EXISTS project_reviews (
@@ -173,6 +238,13 @@ CREATE INDEX IF NOT EXISTS idx_personal_reviews_document ON personal_reviews(doc
 CREATE INDEX IF NOT EXISTS idx_personal_reviews_reviewer ON personal_reviews(reviewer_id);
 CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_library_qa_cache_created ON library_qa_cache(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_weight_factors_scope_updated ON weight_factors(scope, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_weight_factors_owner_updated ON weight_factors(owner, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_weight_factors_key ON weight_factors(key);
+CREATE INDEX IF NOT EXISTS idx_weight_profiles_owner_updated ON weight_profiles(owner, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_weight_profiles_updated ON weight_profiles(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_weight_profile_comments_profile ON weight_profile_comments(profile_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_weight_profile_events_profile ON weight_profile_events(profile_id, created_at DESC);
 """
 
 
@@ -192,17 +264,109 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
     }
     if "deleted_at" not in columns:
         conn.execute("ALTER TABLE documents ADD COLUMN deleted_at TEXT")
+    document_additions = {
+        "source_platform": "TEXT NOT NULL DEFAULT ''",
+        "source_external_id": "TEXT NOT NULL DEFAULT ''",
+        "source_url": "TEXT NOT NULL DEFAULT ''",
+    }
+    for column, definition in document_additions.items():
+        if column not in columns:
+            conn.execute(f"ALTER TABLE documents ADD COLUMN {column} {definition}")
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_documents_deleted_updated ON documents(deleted_at, updated_at DESC)"
     )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_documents_source_external ON documents(source_platform, source_external_id)"
+    )
+    ensure_project_columns(conn)
+    ensure_project_translations_table(conn)
+    ensure_weight_factors_table(conn)
     ensure_default_reviewers(conn)
+
+
+def ensure_weight_factors_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS weight_factors (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          key TEXT NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          category TEXT NOT NULL DEFAULT 'overall_fit',
+          scope TEXT NOT NULL DEFAULT 'personal',
+          owner TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          source_prompt TEXT NOT NULL DEFAULT '',
+          metadata_json TEXT NOT NULL DEFAULT '{}'
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_weight_factors_scope_updated ON weight_factors(scope, updated_at DESC)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_weight_factors_owner_updated ON weight_factors(owner, updated_at DESC)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_weight_factors_key ON weight_factors(key)")
+
+
+def ensure_project_translations_table(conn: sqlite3.Connection) -> None:
+    info = conn.execute("PRAGMA table_info(project_translations)").fetchall()
+    if not info:
+        return
+    primary_keys = {row["name"] for row in info if int(row["pk"] or 0) > 0}
+    if primary_keys == {"document_id", "lang"}:
+        return
+    conn.execute("ALTER TABLE project_translations RENAME TO project_translations_old")
+    conn.execute(
+        """
+        CREATE TABLE project_translations (
+          document_id INTEGER NOT NULL,
+          lang TEXT NOT NULL DEFAULT 'en',
+          profile_json TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY(document_id, lang),
+          FOREIGN KEY(document_id) REFERENCES documents(id)
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO project_translations(document_id, lang, profile_json, created_at, updated_at)
+        SELECT document_id, COALESCE(NULLIF(lang, ''), 'en'), profile_json, created_at, updated_at
+        FROM project_translations_old
+        """
+    )
+    conn.execute("DROP TABLE project_translations_old")
+
+
+def ensure_project_columns(conn: sqlite3.Connection) -> None:
+    columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(projects)").fetchall()
+    }
+    additions = {
+        "country_or_region": "TEXT NOT NULL DEFAULT '未知'",
+        "customer_type": "TEXT NOT NULL DEFAULT '未知'",
+        "revenue_stage": "TEXT NOT NULL DEFAULT '未知'",
+        "screening_score": "INTEGER NOT NULL DEFAULT 0",
+        "team_score": "INTEGER NOT NULL DEFAULT 0",
+        "traction_score": "INTEGER NOT NULL DEFAULT 0",
+        "risk_level": "TEXT NOT NULL DEFAULT '未知'",
+    }
+    for column, definition in additions.items():
+        if column not in columns:
+            conn.execute(f"ALTER TABLE projects ADD COLUMN {column} {definition}")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_projects_country ON projects(country_or_region)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_projects_customer_type ON projects(customer_type)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_projects_revenue_stage ON projects(revenue_stage)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_projects_screening_score ON projects(screening_score)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_projects_risk_level ON projects(risk_level)")
 
 
 def ensure_default_reviewers(conn: sqlite3.Connection) -> None:
     defaults = [
         ("Reviewer A", "Market / sector fit"),
         ("Reviewer B", "Team and founder quality"),
-        ("Reviewer C", "Product and AI depth"),
+        ("Reviewer C", "Product and VRT Agent depth"),
         ("Reviewer D", "Traction and business model"),
     ]
     for name, role in defaults:
@@ -249,13 +413,35 @@ def upsert_document(conn: sqlite3.Connection, file_path: Path) -> int:
 def get_document_for_path(conn: sqlite3.Connection, file_path: Path) -> dict[str, Any] | None:
     row = conn.execute(
         """
-        SELECT id, file_name, file_path, file_size, status, error, deleted_at, updated_at
+        SELECT
+          id, file_name, file_path, file_size, source_platform,
+          source_external_id, source_url, status, error, deleted_at, updated_at
         FROM documents
         WHERE file_path = ?
         """,
         (str(file_path),),
     ).fetchone()
     return dict(row) if row else None
+
+
+def update_document_source(
+    conn: sqlite3.Connection,
+    file_path: Path,
+    source_platform: str,
+    source_external_id: str,
+    source_url: str,
+) -> None:
+    conn.execute(
+        """
+        UPDATE documents
+        SET source_platform = ?,
+            source_external_id = ?,
+            source_url = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE file_path = ?
+        """,
+        (source_platform, source_external_id, source_url, str(file_path.resolve())),
+    )
 
 
 def replace_chunks(
@@ -304,26 +490,34 @@ def upsert_project(conn: sqlite3.Connection, document_id: int, profile: ProjectP
     conn.execute(
         """
         INSERT INTO projects(
-          document_id, project_name, company_name, industry, ai_related, ai_category,
-          financing_stage, business_model, team_highlights, traction, customers_or_users,
-          revenue_or_financials, one_line_summary, recommendation, risks, tags, evidence,
-          updated_at
+          document_id, project_name, company_name, industry, country_or_region,
+          ai_related, ai_category, financing_stage, business_model, customer_type,
+          revenue_stage, team_highlights, traction, customers_or_users,
+          revenue_or_financials, one_line_summary, recommendation, screening_score,
+          team_score, traction_score, risk_level, risks, tags, evidence, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(document_id) DO UPDATE SET
           project_name=excluded.project_name,
           company_name=excluded.company_name,
           industry=excluded.industry,
+          country_or_region=excluded.country_or_region,
           ai_related=excluded.ai_related,
           ai_category=excluded.ai_category,
           financing_stage=excluded.financing_stage,
           business_model=excluded.business_model,
+          customer_type=excluded.customer_type,
+          revenue_stage=excluded.revenue_stage,
           team_highlights=excluded.team_highlights,
           traction=excluded.traction,
           customers_or_users=excluded.customers_or_users,
           revenue_or_financials=excluded.revenue_or_financials,
           one_line_summary=excluded.one_line_summary,
           recommendation=excluded.recommendation,
+          screening_score=excluded.screening_score,
+          team_score=excluded.team_score,
+          traction_score=excluded.traction_score,
+          risk_level=excluded.risk_level,
           risks=excluded.risks,
           tags=excluded.tags,
           evidence=excluded.evidence,
@@ -334,16 +528,23 @@ def upsert_project(conn: sqlite3.Connection, document_id: int, profile: ProjectP
             payload["project_name"],
             payload["company_name"],
             payload["industry"],
+            payload["country_or_region"],
             int(payload["ai_related"]),
             dumps(payload["ai_category"]),
             payload["financing_stage"],
             payload["business_model"],
+            payload["customer_type"],
+            payload["revenue_stage"],
             dumps(payload["team_highlights"]),
             dumps(payload["traction"]),
             payload["customers_or_users"],
             payload["revenue_or_financials"],
             payload["one_line_summary"],
             payload["recommendation"],
+            int(payload["screening_score"]),
+            int(payload["team_score"]),
+            int(payload["traction_score"]),
+            payload["risk_level"],
             dumps(payload["risks"]),
             dumps(payload["tags"]),
             dumps(payload["evidence"]),
@@ -365,7 +566,7 @@ def mark_failed(conn: sqlite3.Connection, document_id: int, error: str) -> None:
 def project_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     rows = conn.execute(
         """
-        SELECT p.*, d.file_name, d.file_path
+        SELECT p.*, d.file_name, d.file_path, d.source_platform, d.source_external_id, d.source_url
         FROM projects p
         JOIN documents d ON d.id = p.document_id
         WHERE d.deleted_at IS NULL
@@ -477,8 +678,7 @@ def save_project_translation(
         """
         INSERT INTO project_translations(document_id, lang, profile_json, updated_at)
         VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-        ON CONFLICT(document_id) DO UPDATE SET
-          lang=excluded.lang,
+        ON CONFLICT(document_id, lang) DO UPDATE SET
           profile_json=excluded.profile_json,
           updated_at=CURRENT_TIMESTAMP
         """,
@@ -843,5 +1043,7 @@ def normalize_project_row(row: dict[str, Any]) -> dict[str, Any]:
     for key in ["ai_category", "team_highlights", "traction", "risks", "tags", "evidence"]:
         row[key] = loads(row.get(key, "[]")) or []
     row["ai_related"] = bool(row.get("ai_related"))
+    for key in ["screening_score", "team_score", "traction_score"]:
+        row[key] = max(0, min(100, int(row.get(key) or 0)))
     return row
 

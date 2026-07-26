@@ -175,7 +175,7 @@ def fallback_answer(question: str, evidence: list[dict[str, Any]], lang: str, er
     top_sources = evidence[:5]
     if lang == "en":
         lines = [
-            "The AI answer could not be generated, so here is an evidence-only summary from retrieved BP data.",
+            "The VRT Agent answer could not be generated, so here is an evidence-only summary from retrieved BP data.",
         ]
         if error:
             lines.append(f"LLM error: {error}")
@@ -187,7 +187,7 @@ def fallback_answer(question: str, evidence: list[dict[str, Any]], lang: str, er
             )
         return "\n".join(lines)
 
-    lines = ["AI 回答暂时生成失败，下面先给出基于已检索 BP 证据的摘要。"]
+    lines = ["VRT Agent 回答暂时生成失败，下面先给出基于已检索 BP 证据的摘要。"]
     if error:
         lines.append(f"LLM 错误：{error}")
     for source in top_sources:

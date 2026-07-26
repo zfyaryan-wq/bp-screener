@@ -15,16 +15,23 @@ class ProjectProfile(BaseModel):
     project_name: str = "未知"
     company_name: str = "未知"
     industry: str = "未知"
+    country_or_region: str = "未知"
     ai_related: bool = False
     ai_category: list[str] = Field(default_factory=list)
     financing_stage: str = "未知"
     business_model: str = "未知"
+    customer_type: str = "未知"
+    revenue_stage: str = "未知"
     team_highlights: list[str] = Field(default_factory=list)
     traction: list[str] = Field(default_factory=list)
     customers_or_users: str = "未知"
     revenue_or_financials: str = "未知"
     one_line_summary: str = ""
     recommendation: Literal["高", "中", "低", "未知"] = "未知"
+    screening_score: int = 0
+    team_score: int = 0
+    traction_score: int = 0
+    risk_level: Literal["高", "中", "低", "未知"] = "未知"
     risks: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     evidence: list[Evidence] = Field(default_factory=list)

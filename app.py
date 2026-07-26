@@ -105,6 +105,11 @@ def localized_status(value: object, lang: str) -> str:
     return STATUS_LABELS[lang].get(text, text)
 
 
+def localized_risk_level(value: object, lang: str) -> str:
+    text = str(value or "未知").strip()
+    return RECOMMENDATION_LABELS[lang].get(text, text)
+
+
 def localized_page(page: int | None, labels: dict) -> str:
     if labels["page"] == "第":
         return f"第 {page or labels['unknown']} 页"
@@ -214,9 +219,16 @@ def render_inline_bp_view(conn, document_id: int, labels: dict, lang: str) -> No
         labels["detail"]["recommendation"],
         localized_recommendation(display_project.get("recommendation"), lang),
     )
+    score_cols = st.columns(4)
+    score_cols[0].metric(labels["detail"]["screening_score"], int(display_project.get("screening_score") or 0))
+    score_cols[1].metric(labels["detail"]["team_score"], int(display_project.get("team_score") or 0))
+    score_cols[2].metric(labels["detail"]["traction_score"], int(display_project.get("traction_score") or 0))
+    score_cols[3].metric(labels["detail"]["risk_level"], localized_risk_level(display_project.get("risk_level"), lang))
 
     source_path = Path(project["file_path"])
     st.markdown(f"**{labels['detail']['preview']}**")
+    if project.get("source_url"):
+        st.link_button(labels["detail"]["open_feishu"], str(project["source_url"]))
     if source_path.exists() and source_path.suffix.lower() == ".pdf":
         preview_url = pdf_preview_url(source_path, int(document_id))
         st.markdown(pdf_preview_html(source_path, int(document_id)), unsafe_allow_html=True)
@@ -251,18 +263,21 @@ def project_card_html(row: dict, labels: dict, lang: str) -> str:
     tags = [
         localized_value(row.get("industry"), labels),
         localized_value(row.get("financing_stage"), labels),
-        "AI" if row.get("ai_related") else "",
+        "VRT Agent" if row.get("ai_related") else "",
         *[str(tag) for tag in (row.get("tags") or [])[:2]],
     ]
     pills = "".join(f'<span class="pill">{tag}</span>' for tag in tags if tag and tag != labels["empty"])
     summary = localized_value(row.get("one_line_summary"), labels)
     recommendation = localized_recommendation(row.get("recommendation"), lang) or labels["empty"]
+    score = int(row.get("screening_score") or 0)
+    risk = localized_risk_level(row.get("risk_level"), lang)
     return f"""
     <div class="project-card">
       <h3>{row.get("project_name") or row.get("company_name") or labels["empty"]}</h3>
       <div>{pills}</div>
       <p>{summary}</p>
       <p><strong>{labels["columns"]["recommendation"]}:</strong> {recommendation}</p>
+      <p><strong>{labels["columns"]["screening_score"]}:</strong> {score} · <strong>{labels["columns"]["risk_level"]}:</strong> {risk}</p>
     </div>
     """
 
@@ -403,7 +418,7 @@ with connect() as conn:
             st.session_state["library_qa_question"] = ""
         example_questions = [
             "Which projects should we discuss first?",
-            "Which AI healthcare projects have strong teams?",
+            "Which VRT Agent healthcare projects have strong teams?",
             "Which projects look risky or unclear?",
         ]
         example_cols = st.columns(3)
@@ -444,9 +459,9 @@ with connect() as conn:
                 st.info("Loaded from local QA cache." if lang == "en" else "已从本地问答缓存读取。")
             if result.get("used_fallback"):
                 st.warning(
-                    "Using evidence-only fallback because the AI answer could not be generated."
+                    "Using evidence-only fallback because the VRT Agent answer could not be generated."
                     if lang == "en"
-                    else "当前使用证据兜底回答：AI 总结没有正常生成。"
+                    else "当前使用证据兜底回答：VRT Agent 总结没有正常生成。"
                 )
             st.markdown(f"**{labels['library_qa']['answer']}**")
             st.write(result.get("answer") or labels["empty"])
@@ -575,12 +590,36 @@ with connect() as conn:
                     "Unknown": "未知",
                 }.get(recommendation_label, "")
             ai_only = col4.checkbox(labels["ai_only"])
+            col5, col6, col7, col8 = st.columns(4)
+            country = col5.text_input(labels["country_filter"], placeholder=labels["country_placeholder"])
+            customer_type = col6.text_input(labels["customer_filter"], placeholder=labels["customer_placeholder"])
+            revenue_stage = col7.text_input(labels["revenue_filter"], placeholder=labels["revenue_placeholder"])
+            if lang == "zh":
+                risk_level = col8.selectbox(labels["risk_level"], ["", "高", "中", "低", "未知"])
+            else:
+                risk_label = col8.selectbox(labels["risk_level"], ["", "High", "Medium", "Low", "Unknown"])
+                risk_level = {
+                    "High": "高",
+                    "Medium": "中",
+                    "Low": "低",
+                    "Unknown": "未知",
+                }.get(risk_label, "")
+            sort_options = labels["sort_options"]
+            sort_by = st.selectbox(
+                labels["sort_by"],
+                list(sort_options.keys()),
+                format_func=lambda key: sort_options[key],
+            )
 
         total_rows = count_projects(
             conn,
             industry=industry,
             stage=stage,
             recommendation=recommendation,
+            country=country,
+            customer_type=customer_type,
+            revenue_stage=revenue_stage,
+            risk_level=risk_level,
             ai_only=ai_only,
         )
         page_cols = st.columns([1, 2])
@@ -594,7 +633,12 @@ with connect() as conn:
             industry=industry,
             stage=stage,
             recommendation=recommendation,
+            country=country,
+            customer_type=customer_type,
+            revenue_stage=revenue_stage,
+            risk_level=risk_level,
             ai_only=ai_only,
+            sort_by=sort_by,
             limit=page_size,
             offset=start_index,
         )
@@ -643,6 +687,9 @@ with connect() as conn:
                             conn.commit()
                 st.success(labels["visible_translated"].format(count=translated_count))
                 st.rerun()
+        if st.session_state.get("library_open_document_id"):
+            render_inline_bp_view(conn, int(st.session_state["library_open_document_id"]), labels, lang)
+
         if display_rows:
             card_columns = st.columns(3)
             for index, row in enumerate(display_rows):
@@ -655,9 +702,6 @@ with connect() as conn:
         else:
             st.info(labels["quick_start"]["no_projects"])
 
-        if st.session_state.get("library_open_document_id"):
-            render_inline_bp_view(conn, int(st.session_state["library_open_document_id"]), labels, lang)
-
         consensus_by_document = {
             int(row["document_id"]): team_consensus(conn, int(row["document_id"]))
             for row in display_rows
@@ -669,11 +713,18 @@ with connect() as conn:
                     labels["columns"]["project"]: row["project_name"],
                     labels["columns"]["company"]: row["company_name"],
                     labels["columns"]["industry"]: row["industry"],
-                    "AI": labels["yes"] if row["ai_related"] else labels["no"],
+                    labels["columns"]["country"]: localized_value(row.get("country_or_region"), labels),
+                    "VRT Agent": labels["yes"] if row["ai_related"] else labels["no"],
                     labels["columns"]["ai_category"]: join_values(row["ai_category"]),
                     labels["columns"]["stage"]: localized_value(row["financing_stage"], labels),
+                    labels["columns"]["customer_type"]: localized_value(row.get("customer_type"), labels),
+                    labels["columns"]["revenue_stage"]: localized_value(row.get("revenue_stage"), labels),
                     labels["columns"]["business_model"]: localized_value(row["business_model"], labels),
                     labels["columns"]["recommendation"]: localized_recommendation(row["recommendation"], lang),
+                    labels["columns"]["screening_score"]: row.get("screening_score", 0),
+                    labels["columns"]["team_score"]: row.get("team_score", 0),
+                    labels["columns"]["traction_score"]: row.get("traction_score", 0),
+                    labels["columns"]["risk_level"]: localized_risk_level(row.get("risk_level"), lang),
                     labels["columns"]["summary"]: localized_value(row["one_line_summary"], labels),
                     labels["columns"]["review_status"]: review_status_label(
                         row.get("review_status", "待看"),
@@ -1143,6 +1194,11 @@ with connect() as conn:
                 labels["detail"]["recommendation"],
                 localized_recommendation(display_project["recommendation"], lang),
             )
+            score_cols = st.columns(4)
+            score_cols[0].metric(labels["detail"]["screening_score"], int(display_project.get("screening_score") or 0))
+            score_cols[1].metric(labels["detail"]["team_score"], int(display_project.get("team_score") or 0))
+            score_cols[2].metric(labels["detail"]["traction_score"], int(display_project.get("traction_score") or 0))
+            score_cols[3].metric(labels["detail"]["risk_level"], localized_risk_level(display_project.get("risk_level"), lang))
 
             st.markdown(f"### {labels['similar']['title']}")
             similar_rows = similar_projects(conn, int(document_id), limit=5)
@@ -1189,6 +1245,8 @@ with connect() as conn:
             st.code(project["file_name"])
             source_path = Path(project["file_path"])
             st.markdown(f"**{labels['detail']['preview']}**")
+            if project.get("source_url"):
+                st.link_button(labels["detail"]["open_feishu"], str(project["source_url"]))
             if source_path.exists() and source_path.suffix.lower() == ".pdf":
                 preview_url = pdf_preview_url(source_path, int(document_id))
                 st.markdown(pdf_preview_html(source_path, int(document_id)), unsafe_allow_html=True)

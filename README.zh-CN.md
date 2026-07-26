@@ -19,6 +19,7 @@ BP Screener 是一套轻量级 BP / 商业计划书筛选工具，适合学生�
 - 使用本地 SQLite 保存项目档案
 - 使用 SQLite FTS 对文档片段做关键词全文检索
 - 提供 Streamlit Web 界面，支持上传、处理、搜索、筛选、详情查看和 CSV 导出
+- 项目库支持类似电商列表的多条件筛选和排序：国家/地区、客户类型、收入阶段、风险等级、综合筛选分、团队分、进展分等
 - 优先保留证据片段，便于回看模型判断依据
 - 存储层无绑定，可对接飞书云盘、OneDrive、OSS、COS 或本地文件夹
 
@@ -179,7 +180,7 @@ python scripts\build_semantic_index.py
 python scripts\build_semantic_index.py --force
 ```
 
-这一步参考 Open Notebook / NotebookLM 的思路，但保留 BP Screener 的垂直业务结构：项目档案、投资筛选字段、投委会评审、四人协作和 Notion 同步。
+这一步参考 Open Notebook / NotebookLM 的思路，但保留 BP Screener 的垂直业务结构：项目档案、投资筛选字段、投委会评审、团队协作和 Notion 同步。
 
 ## 致谢
 
@@ -193,6 +194,12 @@ BP Screener 是面向学生小组 BP 筛选场景的垂直工作台，不是下�
 
 当前系统入口是 `data/inbox/`。后续接入云盘或对象存储时，只需要把文件同步或下载到这个目录，也可以在 `.env` 里修改 `BP_INBOX_DIR` 指向其他同步目录。
 
+本机这批 BP 可以直接指向：
+
+```env
+BP_INBOX_DIR=C:\Users\zfyar\.cursor\projects\BPs
+```
+
 推荐方式：
 
 - 飞书云盘：先同步或下载到本地目录再导入。
@@ -201,7 +208,7 @@ BP Screener 是面向学生小组 BP 筛选场景的垂直工作台，不是下�
 
 ## Notion 协作工作台
 
-Notion 适合作为四人小组的协作前台：项目库、筛选视图、人工评审、AI 投委会结论和操作日志。PDF 解析、LLM 抽取、全文检索仍由本地 BP Screener 负责，然后同步结构化结果到 Notion。
+Notion 适合作为团队协作前台：项目库、筛选视图、人工评审、AI 投委会结论和操作日志。PDF 解析、LLM 抽取、全文检索仍由本地 BP Screener 负责，然后同步结构化结果到 Notion。
 
 先在 Notion 创建一个空白父页面，并把这个页面分享给你的 Notion Internal Integration。然后在 `.env` 中配置：
 
@@ -231,7 +238,7 @@ python scripts\notion_sync.py sync --limit 10
 脚本会创建并同步 4 个数据库：
 
 - `BP Projects`：结构化项目库
-- `BP Reviews`：四人小组人工评审
+- `BP Reviews`：团队人工评审
 - `AI Committee Reviews`：AI 投委会评审
 - `BP Activity Logs`：增删改操作日志
 
