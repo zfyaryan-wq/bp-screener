@@ -73,7 +73,9 @@ const labels = {
     filtersUsed: "Criteria used",
     loginTitle: "Choose your name",
     loginHint: "Select a team member to enter the BP workspace.",
+    loginContinueHint: "Last session found for {name}. Select Enter to continue as this member, or choose another member.",
     loginButton: "Enter",
+    loginContinueButton: "Continue as {name}",
     loginFailed: "Please choose a valid team member.",
     switchUserTitle: "Switch user",
     switchUserHint: "Choose a team member, then confirm before operating as that person.",
@@ -402,7 +404,9 @@ const labels = {
     filtersUsed: "使用的判断标准",
     loginTitle: "选择你的名字",
     loginHint: "选择小组成员身份后进入 BP 工作台。",
+    loginContinueHint: "检测到 {name} 的上次会话。点击进入可继续使用该身份，也可以先选择其他成员。",
     loginButton: "进入",
+    loginContinueButton: "以 {name} 继续",
     loginFailed: "请选择有效的小组成员。",
     switchUserTitle: "切换用户",
     switchUserHint: "选择团队成员，并确认后再以该身份操作。",
@@ -661,9 +665,12 @@ const labels = {
 };
 
 let lang = localStorage.getItem("bp-screener-lang") || "en";
-let currentUser = localStorage.getItem("bp-screener-user") || "";
+let storedLoginUser = localStorage.getItem("bp-screener-user") || "";
+let currentUser = "";
 let accessCode = "";
 let sessionToken = sessionStorage.getItem("bp-screener-session-token") || "";
+let lastAuthError = "";
+let lastAuthStatus = 0;
 localStorage.removeItem("bp-screener-access-code");
 let projects = [];
 let defaultFactors = [];
@@ -826,9 +833,11 @@ const dialog = document.querySelector("#projectDialog");
 const detail = document.querySelector("#projectDetail");
 const loginOverlay = document.querySelector("#loginOverlay");
 const loginForm = document.querySelector("#loginForm");
+const loginHint = document.querySelector("[data-i18n='loginHint']");
 const userSelect = document.querySelector("#userSelect");
 const accessCodeInput = document.querySelector("#accessCode");
 const loginError = document.querySelector("#loginError");
+const loginSubmitButton = loginForm?.querySelector("button[type='submit']");
 const welcomeMessage = document.querySelector("#welcomeMessage");
 const currentUserBadge = document.querySelector("#currentUserBadge");
 const personalUserMirror = document.querySelector("#personalUserMirror");
@@ -936,7 +945,11 @@ function setupVrtAgentMotionState() {
 language.value = lang;
 setupVrtAgentMotionState();
 renderLoginMemberAvatars();
-userSelect.addEventListener("change", renderLoginMemberAvatars);
+userSelect.addEventListener("change", () => {
+  renderLoginMemberAvatars();
+  renderLoginPrompt();
+  loginError.textContent = "";
+});
 language.addEventListener("change", () => {
   lang = language.value;
   localStorage.setItem("bp-screener-lang", lang);
@@ -1036,12 +1049,17 @@ loginForm.addEventListener("submit", async (event) => {
     return;
   }
   const providedCode = accessCodeInput?.value.trim() || "";
-  const nextSessionToken = await verifyAccountAccess(selectedUser, providedCode, loginForm, accessCodeInput);
+  const nextSessionToken = await verifyAccountAccess(selectedUser, providedCode, loginForm, accessCodeInput, {
+    useStoredSession: canUseStoredSessionFor(selectedUser),
+  });
   if (!nextSessionToken) {
-    loginError.textContent = t("invalidAccessCode");
+    loginError.textContent = !providedCode && (accountAccessCodeStatus[selectedUser] || lastAuthStatus === 401)
+      ? t("accessCodeRequired")
+      : lastAuthError || t("invalidAccessCode");
     return;
   }
   currentUser = selectedUser;
+  storedLoginUser = selectedUser;
   accessCode = "";
   sessionToken = nextSessionToken;
   localStorage.setItem("bp-screener-user", currentUser);
@@ -1082,6 +1100,7 @@ function applyLanguage() {
     if (node.hasAttribute("aria-label")) node.setAttribute("aria-label", t(node.dataset.i18nTitle));
   });
   renderLoginMemberAvatars();
+  renderLoginPrompt();
   renderWelcome();
   renderFactorBuilder();
   renderProfileBoard();
@@ -1177,25 +1196,15 @@ async function refreshWorkspaceForCurrentUser() {
 }
 
 async function bootstrapWorkspace() {
-  if (!currentUser || !teamMembers.includes(currentUser) || !sessionToken) {
+  loginOverlay.classList.remove("hidden");
+  if (!teamMembers.includes(storedLoginUser)) {
+    storedLoginUser = "";
     clearSessionOnly();
-    userSelect.focus();
-    return;
   }
-  userSelect.value = currentUser;
+  if (storedLoginUser) userSelect.value = storedLoginUser;
   renderLoginMemberAvatars();
-  const verifiedSession = await verifyAccountAccess(currentUser, "", null, null);
-  if (!verifiedSession) {
-    clearSessionOnly();
-    loginOverlay.classList.remove("hidden");
-    userSelect.focus();
-    return;
-  }
-  sessionToken = verifiedSession;
-  sessionStorage.setItem("bp-screener-session-token", sessionToken);
-  loginOverlay.classList.add("hidden");
-  renderWelcome();
-  await refreshWorkspaceForCurrentUser();
+  renderLoginPrompt();
+  userSelect.focus();
 }
 
 function loadNonCriticalWorkspaceData() {
@@ -1221,13 +1230,19 @@ async function loadAccessCodeStatus() {
   accountAccessCodeStatus = data.members || {};
 }
 
-async function verifyAccountAccess(user, code, errorContainer, errorInput) {
+function canUseStoredSessionFor(user) {
+  return Boolean(sessionToken && storedLoginUser && user === storedLoginUser);
+}
+
+async function verifyAccountAccess(user, code, errorContainer, errorInput, options = {}) {
+  lastAuthError = "";
+  lastAuthStatus = 0;
   const response = await fetch("/api/account/me", {
     headers: {
       "x-bp-user": user,
       "x-bp-timezone": userTimezone,
       "x-bp-locale": currentLocale(),
-      ...(sessionToken && user === currentUser ? { "x-bp-session-token": sessionToken } : {}),
+      ...(sessionToken && (user === currentUser || options.useStoredSession) ? { "x-bp-session-token": sessionToken } : {}),
       ...(code ? { "x-bp-access-code": code } : {}),
     },
   }).catch(() => null);
@@ -1235,6 +1250,9 @@ async function verifyAccountAccess(user, code, errorContainer, errorInput) {
     const data = await response.json().catch(() => ({}));
     return data.session_token || sessionToken || "";
   }
+  lastAuthStatus = response?.status || 0;
+  const data = await response?.clone().json().catch(() => ({}));
+  lastAuthError = data?.error || "";
   if (errorContainer || errorInput) triggerAuthError(errorContainer, errorInput);
   return "";
 }
@@ -1301,7 +1319,7 @@ function setAccountAccessStatus(message, type = "") {
 }
 
 function renderLoginMemberAvatars() {
-  const selected = teamMembers.includes(userSelect.value) ? userSelect.value : currentUser || teamUserMeta[0].name;
+  const selected = teamMembers.includes(userSelect.value) ? userSelect.value : currentUser || storedLoginUser || teamUserMeta[0].name;
   userSelect.innerHTML = teamUserMeta
     .map((member) => `<option value="${escapeHtml(member.name)}">${escapeHtml(member.displayName)}</option>`)
     .join("");
@@ -1321,8 +1339,22 @@ function renderLoginMemberAvatars() {
     button.addEventListener("click", () => {
       userSelect.value = button.dataset.loginMember;
       renderLoginMemberAvatars();
+      renderLoginPrompt();
+      loginError.textContent = "";
     });
   });
+}
+
+function renderLoginPrompt() {
+  if (!loginHint || !loginSubmitButton) return;
+  const selectedUser = userSelect?.value || "";
+  const canContinue = canUseStoredSessionFor(selectedUser);
+  loginHint.textContent = canContinue
+    ? t("loginContinueHint").replace("{name}", userDisplayName(selectedUser))
+    : t("loginHint");
+  loginSubmitButton.textContent = canContinue
+    ? t("loginContinueButton").replace("{name}", userDisplayName(selectedUser))
+    : t("loginButton");
 }
 
 function openUserSwitchDialog() {
@@ -1399,6 +1431,7 @@ async function confirmUserSwitch() {
   const nextSessionToken = await verifyAccountAccess(pendingSwitchUser, nextAccessCode, userSwitchConfirm, switchAccessCodeInput);
   if (!nextSessionToken) return;
   currentUser = pendingSwitchUser;
+  storedLoginUser = pendingSwitchUser;
   accessCode = "";
   sessionToken = nextSessionToken;
   localStorage.setItem("bp-screener-user", currentUser);
