@@ -994,17 +994,33 @@ async function listProjects(request, env) {
   const bindings = [];
   await ensureReviewOpsTables(env);
 
-  if (query) {
-    conditions.push(`(
-      p.project_name LIKE ? OR
-      p.company_name LIKE ? OR
-      p.industry LIKE ? OR
-      p.business_model LIKE ? OR
-      p.one_line_summary LIKE ? OR
-      p.tags LIKE ? OR
-      t.profile_json LIKE ?
-    )`);
-    bindings.push(...Array(7).fill(likeTerm(query)));
+  const keywordTerms = keywordSearchTerms(query);
+  if (keywordTerms.length) {
+    const keywordFields = [
+      "p.project_name",
+      "p.company_name",
+      "p.industry",
+      "p.country_or_region",
+      "p.financing_stage",
+      "p.customer_type",
+      "p.revenue_stage",
+      "p.business_model",
+      "p.one_line_summary",
+      "p.ai_category",
+      "p.tags",
+      "p.team_highlights",
+      "p.traction",
+      "p.risks",
+      "t.profile_json",
+    ];
+    conditions.push(
+      keywordTerms
+        .map(() => `(${keywordFields.map((field) => `${field} LIKE ?`).join(" OR ")})`)
+        .join(" AND "),
+    );
+    keywordTerms.forEach((term) => {
+      bindings.push(...Array(keywordFields.length).fill(likeTerm(term)));
+    });
   }
   if (industry) {
     conditions.push("p.industry LIKE ?");
@@ -5489,6 +5505,17 @@ function requestClientMetadata(request, body = {}) {
 
 function localizedLang(value) {
   return value === "zh" ? "zh" : "en";
+}
+
+function keywordSearchTerms(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return [];
+  const terms = normalized
+    .split(/[\s,;|/]+/)
+    .map((term) => term.trim())
+    .filter(Boolean)
+    .slice(0, 8);
+  return terms.length ? terms : [normalized];
 }
 
 function likeTerm(value) {

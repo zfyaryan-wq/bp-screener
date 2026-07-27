@@ -6,7 +6,7 @@
     <title>VRT BP Screener</title>
     <link rel="icon" href="/favicon.jpg" type="image/jpeg" />
     <link rel="apple-touch-icon" href="/favicon.jpg" />
-    <link rel="stylesheet" href="/styles.css?v=20260727-action-feedback-v1" />
+    <link rel="stylesheet" href="/styles.css?v=20260727-keyword-search-v1" />
   </head>
   <body>
     <div id="loginOverlay" class="loginOverlay">
@@ -263,7 +263,18 @@
             <section class="filters bpListFilters" aria-label="BP list filters">
               <div class="filterField keywordFilter">
                 <label data-i18n="keyword">Keyword</label>
-                <input id="keyword" type="search" placeholder="Healthcare, SaaS, Series A" aria-label="Keyword" data-i18n-title="keyword" />
+                <div class="keywordSearchBox">
+                  <input
+                    id="keyword"
+                    type="search"
+                    placeholder="medical device China, semiconductor, Series A SaaS"
+                    aria-label="Keyword"
+                    data-i18n-title="keyword"
+                    data-i18n-placeholder="keywordPlaceholder"
+                  />
+                  <button id="keywordClearButton" type="button" class="keywordClearButton" data-i18n-title="clearKeyword" aria-label="Clear keyword" hidden>x</button>
+                </div>
+                <small class="keywordFilterHint" data-i18n="keywordFilterHint">Keyword combines with filters below.</small>
               </div>
               <div class="filterField">
                 <label data-i18n="industry">Industry</label>
@@ -304,6 +315,11 @@
               <div class="filterActions">
                 <button id="searchButton" type="button" data-i18n="search">Search</button>
                 <button id="resetFiltersButton" type="button" class="secondary compactButton" data-i18n="resetFilters">Reset</button>
+              </div>
+              <div class="suggestedSearchChips" aria-label="Suggested keyword searches">
+                <button type="button" data-keyword-chip="medical device China">Medical device China</button>
+                <button type="button" data-keyword-chip="semiconductor">Semiconductor</button>
+                <button type="button" data-keyword-chip="Series A SaaS">Series A SaaS</button>
               </div>
               <details class="advancedFilterDetails">
                 <summary data-i18n="moreFilters">More filters</summary>
@@ -463,6 +479,6 @@
       </dialog>
     </main>
 
-    <script src="/app.js?v=20260726-name-only-login-v1" type="module"></script>
+    <script src="/app.js?v=20260727-keyword-search-v1" type="module"></script>
   </body>
 </html>

@@ -29,7 +29,7 @@ const labels = {
     sortCustomWeight: "Personal weight ranking",
     sortPersonalScoring: "My confirmed scores",
     search: "Search",
-    resetFilters: "Reset",
+    resetFilters: "Reset filters",
     clearKeyword: "Clear keyword",
     keywordPlaceholder: "Search industry, company, technology, region, stage, or theme",
     keywordFilterHint: "Keyword is the main search. Other filters narrow the result.",
@@ -400,7 +400,7 @@ const labels = {
     sortCustomWeight: "个人权重排序",
     sortPersonalScoring: "我的确认评分",
     search: "搜索",
-    resetFilters: "重置",
+    resetFilters: "重置筛选",
     clearKeyword: "清空关键词",
     keywordPlaceholder: "搜索行业、公司、技术、地区、阶段或主题",
     keywordFilterHint: "关键词是主搜索；其他筛选用于继续收窄。",
@@ -759,6 +759,7 @@ localStorage.removeItem("bp-screener-access-code");
 let projects = [];
 let projectListRequestSeq = 0;
 let projectListState = { phase: "idle", message: "", error: "" };
+let debouncedProjectSearch = null;
 let projectActionStatusTimer = 0;
 const projectActionRequests = new Set();
 const expandedProjectRows = new Set();
@@ -1068,12 +1069,12 @@ language.addEventListener("change", () => {
   }
 });
 
-searchButton?.addEventListener("click", loadProjects);
+searchButton?.addEventListener("click", runProjectSearchNow);
 resetFiltersButton?.addEventListener("click", resetProjectFilters);
 keywordInput?.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.isComposing) {
     event.preventDefault();
-    loadProjects();
+    runProjectSearchNow();
   }
 });
 keywordClearButton?.addEventListener("click", () => {
@@ -1081,7 +1082,7 @@ keywordClearButton?.addEventListener("click", () => {
   keywordInput.value = "";
   syncKeywordClearButton();
   keywordInput.focus();
-  loadProjects();
+  runProjectSearchNow();
 });
 document.querySelectorAll("[data-keyword-chip]").forEach((button) => {
   button.addEventListener("click", () => {
@@ -1089,7 +1090,7 @@ document.querySelectorAll("[data-keyword-chip]").forEach((button) => {
     keywordInput.value = button.dataset.keywordChip || "";
     syncKeywordClearButton();
     keywordInput.focus();
-    loadProjects();
+    runProjectSearchNow();
   });
 });
 document.querySelector("#visibilityFilter")?.addEventListener("change", (event) => {
@@ -1256,6 +1257,7 @@ function applyLanguage() {
   renderReviewBoard();
   renderFilterOptions(filterOptions);
   syncHiddenFilterControls();
+  syncKeywordClearButton();
   renderProjectList();
   if (selectedProject) renderProjectOps(selectedProject);
   if (selectedProject) renderScoreReviewCard(selectedProject);
@@ -2021,10 +2023,10 @@ async function loadFilterOptions() {
 }
 
 function setupFilterAutoRefresh() {
-  const debouncedLoadProjects = debounce(loadProjects, 260);
+  debouncedProjectSearch = debounce(loadProjects, 260);
   keywordInput?.addEventListener("input", () => {
     syncKeywordClearButton();
-    debouncedLoadProjects();
+    debouncedProjectSearch();
   });
   [
     "#industry",
@@ -2060,6 +2062,11 @@ function resetProjectFilters() {
   if (sortBy) sortBy.value = "updated_desc";
   applyVisibilityFilterValue("active");
   syncKeywordClearButton();
+  runProjectSearchNow();
+}
+
+function runProjectSearchNow() {
+  debouncedProjectSearch?.cancel?.();
   loadProjects();
 }
 
@@ -2246,10 +2253,15 @@ function levelLabel(value, targetLang = lang) {
 
 function debounce(callback, delay = 200) {
   let timer = 0;
-  return (...args) => {
+  const debounced = (...args) => {
     window.clearTimeout(timer);
     timer = window.setTimeout(() => callback(...args), delay);
   };
+  debounced.cancel = () => {
+    window.clearTimeout(timer);
+    timer = 0;
+  };
+  return debounced;
 }
 
 async function loadWeightProfiles() {
@@ -3867,7 +3879,7 @@ function renderProjects(items) {
       keywordInput.value = "";
       syncKeywordClearButton();
       keywordInput.focus();
-      loadProjects();
+      runProjectSearchNow();
     });
     grid.querySelector("[data-reset-filters]")?.addEventListener("click", resetProjectFilters);
     return;
