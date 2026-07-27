@@ -347,6 +347,7 @@ h1 {
   align-items: center;
   gap: 8px;
   min-width: 0;
+  overflow: hidden;
   border: 1px solid rgba(52, 211, 153, 0.18);
   border-radius: 18px;
   padding: 5px 7px;
@@ -1534,7 +1535,8 @@ button.secondary:hover {
 
 .overviewMetricsRow {
   display: grid;
-  grid-template-columns: minmax(96px, 0.18fr) minmax(0, 1fr);
+  grid-template-columns: minmax(92px, 0.13fr) minmax(0, 0.5fr) minmax(260px, 0.37fr);
+  align-items: stretch;
   gap: 8px;
   min-width: 0;
   min-height: max-content;
@@ -1569,10 +1571,10 @@ button.secondary:hover {
   display: grid;
   gap: 6px;
   min-width: 0;
-  margin: 0 10px 10px;
+  margin: 0;
   border: 1px solid rgba(52, 211, 153, 0.16);
   border-radius: 14px;
-  padding: 8px;
+  padding: 7px;
   background:
     radial-gradient(circle at 16% 0%, rgba(34, 197, 94, 0.1), transparent 42%),
     rgba(2, 8, 8, 0.4);
@@ -2578,6 +2580,84 @@ button.secondary:hover {
   gap: 5px;
 }
 
+.compactLeaderboardGrid {
+  align-items: stretch;
+}
+
+.bpLeaderboardCard {
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  min-width: 0;
+  min-height: 58px;
+  border: 1px solid rgba(52, 211, 153, 0.18);
+  border-radius: 10px;
+  padding: 6px;
+  color: #bbf7d0;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(34, 197, 94, 0.12), transparent 42%),
+    rgba(2, 8, 8, 0.48);
+  box-shadow: none;
+  text-align: left;
+}
+
+button.bpLeaderboardCard:hover,
+button.bpLeaderboardCard:focus-visible {
+  border-color: rgba(134, 239, 172, 0.62);
+  background: rgba(34, 197, 94, 0.14);
+}
+
+.bpLeaderboardCard.empty {
+  opacity: 0.62;
+}
+
+.bpLeaderboardCard strong,
+.bpLeaderboardCard span,
+.bpLeaderboardCard small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bpLeaderboardCard > strong {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #bbf7d0;
+  font-size: 10px;
+  line-height: 1.15;
+}
+
+.bpLeaderboardCardMain {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px;
+}
+
+.bpLeaderboardCardMain span,
+.bpLeaderboardCardValue {
+  color: #d1fae5;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.bpLeaderboardCardMain b {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: #86efac;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.bpLeaderboardCard small {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.2;
+}
+
 .bpLeaderboardColumn {
   display: grid;
   min-width: 0;
@@ -2695,6 +2775,7 @@ button.secondary:hover {
 .weeklyNominationMember {
   display: grid;
   min-width: 0;
+  overflow: hidden;
   align-content: center;
   gap: 2px;
   border: 1px solid rgba(52, 211, 153, 0.18);
@@ -2732,6 +2813,11 @@ button.secondary:hover {
   --avatar-font-size: 8px;
 }
 
+.weeklyNominationTopCard .weeklyNominationPerson .avatar-large {
+  --avatar-size: 20px;
+  --avatar-font-size: 8px;
+}
+
 .weeklyNominationPerson strong,
 .weeklyNominationProject span,
 .weeklyNominationProject small {
@@ -2743,6 +2829,10 @@ button.secondary:hover {
 .weeklyNominationPerson strong {
   color: #d1fae5;
   font-size: 9px;
+}
+
+.weeklyNominationTopCard .weeklyNominationPerson strong {
+  font-size: 8px;
 }
 
 .weeklyNominationStatus {
@@ -4982,6 +5072,10 @@ dialog::backdrop {
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   }
 
+  .libraryLeaderboardCard .compactLeaderboardGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .projectTableHeader,
   .projectRow {
     grid-template-columns:
@@ -5068,6 +5162,10 @@ dialog::backdrop {
 
   .weeklyNominationTopCard .weeklyNominationGrid {
     grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .libraryLeaderboardCard .compactLeaderboardGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .weightEditorDialog .weightWorkspace {

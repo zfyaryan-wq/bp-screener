@@ -334,6 +334,9 @@ const labels = {
     topLikedBp: "Top liked BP",
     topDislikedBp: "Top not interested / disliked",
     bpViewStats: "BP view stats",
+    leaderboardTopLikedCompact: "点赞最高",
+    leaderboardTopDislikedCompact: "隐藏/点踩最多",
+    leaderboardViewsCompact: "浏览",
     viewsCount: "{count} viewed",
     noLeaderboardData: "No leaderboard data yet.",
     noMyNominationHint: "You have not nominated a project this week.",
@@ -694,6 +697,9 @@ const labels = {
     topLikedBp: "点赞最高 BP",
     topDislikedBp: "不感兴趣 / 点踩最多",
     bpViewStats: "浏览统计",
+    leaderboardTopLikedCompact: "Top liked",
+    leaderboardTopDislikedCompact: "Most hidden/disliked",
+    leaderboardViewsCompact: "Views",
     viewsCount: "浏览 {count} 个 BP",
     noLeaderboardData: "暂时还没有排行榜数据。",
     noMyNominationHint: "你本周还没有提名项目。",
@@ -3012,13 +3018,70 @@ function renderBpLeaderboards(leaderboards) {
   const hasData = topLiked.length || topDisliked.length || viewerCounts.some((item) => Number(item.count || 0) > 0);
   bpLeaderboardSpotlight.innerHTML = hasData
     ? `
-      <div class="bpLeaderboardGrid">
-        ${leaderboardProjectColumn(t("topLikedBp"), "thumbsUp", topLiked)}
-        ${leaderboardProjectColumn(t("topDislikedBp"), "thumbsDown", topDisliked)}
-        ${viewerCountsColumn(viewerCounts)}
+      <div class="bpLeaderboardGrid compactLeaderboardGrid">
+        ${leaderboardProjectSummaryCard(t("leaderboardTopLikedCompact"), "thumbsUp", topLiked)}
+        ${leaderboardProjectSummaryCard(t("leaderboardTopDislikedCompact"), "thumbsDown", topDisliked)}
+        ${viewerCountsSummaryCard(viewerCounts)}
       </div>
     `
     : `<p class="subtle">${t("noLeaderboardData")}</p>`;
+}
+
+function leaderboardProjectSummaryCard(title, iconName, rows = []) {
+  const row = rows[0] || null;
+  if (!row) {
+    return `
+      <section class="bpLeaderboardCard empty" ${buttonAttrs(`${title}: ${t("noLeaderboardData")}`)}>
+        <strong>${icon(iconName, "inlineIcon")} ${escapeHtml(title)}</strong>
+        <span class="bpLeaderboardCardValue">-</span>
+        <small>${escapeHtml(t("noLeaderboardData"))}</small>
+      </section>
+    `;
+  }
+  const project = row.project || {};
+  const projectName = project.project_name || project.company_name || t("unknown");
+  const actors = sortTeamActors(row.actors || []);
+  const score = Number(row.count || actors.length || 0);
+  const tooltipRows = rows
+    .slice(0, 5)
+    .map((item) => {
+      const rowProject = item.project || {};
+      const rowName = rowProject.project_name || rowProject.company_name || t("unknown");
+      const rowActors = sortTeamActors(item.actors || []);
+      return `${rowName}: ${Number(item.count || rowActors.length || 0)}${rowActors.length ? ` (${rowActors.map(userDisplayName).join(", ")})` : ""}`;
+    })
+    .join("\n");
+  return `
+    <button type="button" class="bpLeaderboardCard" data-leaderboard-project-id="${project.document_id}" ${buttonAttrs(`${title}: ${tooltipRows || projectName}`)}>
+      <strong>${icon(iconName, "inlineIcon")} ${escapeHtml(title)}</strong>
+      <span class="bpLeaderboardCardMain">
+        <span>${escapeHtml(projectName)}</span>
+        <b>${icon(iconName, "reactionIcon")} ${score}</b>
+      </span>
+      <small>${actors.length ? actors.slice(0, 5).map(userInitials).join(" · ") : "-"}</small>
+    </button>
+  `;
+}
+
+function viewerCountsSummaryCard(rows = []) {
+  const visibleRows = rows.filter((item) => Number(item.count || 0) > 0);
+  const totalViews = visibleRows.reduce((total, item) => total + Number(item.count || 0), 0);
+  const topViewer = visibleRows[0] || null;
+  const actor = topViewer?.actor || topViewer?.member?.name || "";
+  const tooltipRows = visibleRows
+    .slice(0, 5)
+    .map((item) => `${userDisplayName(item.actor || item.member?.name || "")}: ${Number(item.count || 0)}`)
+    .join("\n");
+  return `
+    <section class="bpLeaderboardCard bpViewsCard ${topViewer ? "" : "empty"}" ${buttonAttrs(`${t("leaderboardViewsCompact")}: ${tooltipRows || t("noLeaderboardData")}`)}>
+      <strong>${icon("search", "inlineIcon")} ${escapeHtml(t("leaderboardViewsCompact"))}</strong>
+      <span class="bpLeaderboardCardMain">
+        <span>${topViewer ? escapeHtml(userDisplayName(actor)) : "-"}</span>
+        <b>${totalViews}</b>
+      </span>
+      <small>${topViewer ? escapeHtml(t("viewsCount").replace("{count}", String(Number(topViewer.count || 0)))) : escapeHtml(t("noLeaderboardData"))}</small>
+    </section>
+  `;
 }
 
 function leaderboardProjectColumn(title, iconName, rows = []) {
@@ -3128,14 +3191,15 @@ function weeklyNominationMemberCard(member, nominations = []) {
   const item = nominations[0] || null;
   const project = item?.project || {};
   const projectName = project.project_name || project.company_name || "";
-  const label = projectName || t("noNominations");
+  const statusLabel = projectName || "-";
+  const tooltipLabel = projectName || "None";
   return `
-    <button type="button" class="weeklyNominationMember ${item ? "nominated" : "empty"}" data-weekly-open ${buttonAttrs(`${member.displayName}: ${label}`)}>
+    <button type="button" class="weeklyNominationMember ${item ? "nominated" : "empty"}" data-weekly-open ${buttonAttrs(`${member.displayName}: ${tooltipLabel}`)}>
       <span class="weeklyNominationPerson">
         ${renderAvatar(member.name, "large")}
-        <strong>${escapeHtml(member.displayName)}</strong>
+        <strong>${escapeHtml(userInitials(member.name))}</strong>
       </span>
-      <span class="weeklyNominationStatus">${escapeHtml(label)}</span>
+      <span class="weeklyNominationStatus">${escapeHtml(statusLabel)}</span>
     </button>
   `;
 }
