@@ -3437,6 +3437,7 @@ button.bpLeaderboardCard:focus-visible {
 .chartChipRow {
   display: flex;
   gap: 4px;
+  align-items: stretch;
   min-width: 0;
   overflow: hidden;
 }
@@ -3445,7 +3446,7 @@ button.bpLeaderboardCard:focus-visible {
   display: inline-flex;
   min-width: 0;
   max-width: 50%;
-  align-items: center;
+  align-items: flex-start;
   gap: 3px;
   border: 1px solid rgba(52, 211, 153, 0.14);
   border-radius: 999px;
@@ -3458,14 +3459,14 @@ button.bpLeaderboardCard:focus-visible {
 
 .chartChip b {
   min-width: 0;
-  overflow: hidden;
   color: #d1fae5;
   font-weight: 850;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .chartChip small {
+  flex: 0 0 auto;
   color: #86efac;
   font-size: 9px;
   font-weight: 950;

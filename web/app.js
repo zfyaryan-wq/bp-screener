@@ -5247,7 +5247,7 @@ function barChart(title, rows) {
           .map(
             ([name, count]) => `
               <span class="chartChip" title="${escapeHtml(name)}">
-                <b>${escapeHtml(shorten(name))}</b>
+                <b>${escapeHtml(name)}</b>
                 <small>${count}</small>
               </span>
             `,
@@ -5256,11 +5256,6 @@ function barChart(title, rows) {
       </div>
     </article>
   `;
-}
-
-function shorten(value) {
-  const text = String(value || "");
-  return text.length > 14 ? `${text.slice(0, 13)}…` : text;
 }
 
 function detailItem(label, value) {
