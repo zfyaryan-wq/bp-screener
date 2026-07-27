@@ -1499,7 +1499,46 @@ button.secondary:hover {
   gap: 8px;
   min-width: 0;
   min-height: max-content;
-  padding: 8px 10px 10px;
+  padding: 8px 10px 6px;
+}
+
+.libraryLeaderboardCard {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  margin: 0 10px 10px;
+  border: 1px solid rgba(52, 211, 153, 0.16);
+  border-radius: 14px;
+  padding: 8px;
+  background:
+    radial-gradient(circle at 16% 0%, rgba(34, 197, 94, 0.1), transparent 42%),
+    rgba(2, 8, 8, 0.4);
+}
+
+.libraryLeaderboardHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.libraryLeaderboardHeader strong {
+  color: #bbf7d0;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.libraryLeaderboardHeader span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.25;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .uploadOverlay {
@@ -2447,7 +2486,13 @@ button.secondary:hover {
   display: grid;
   gap: 6px;
   min-height: 0;
-  padding: 8px 10px 10px;
+  padding: 0;
+}
+
+.bpLeaderboardSpotlight > .subtle {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.3;
 }
 
 .bpLeaderboardGrid {
@@ -2455,6 +2500,11 @@ button.secondary:hover {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
   min-width: 0;
+}
+
+.libraryLeaderboardCard .bpLeaderboardGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
 }
 
 .bpLeaderboardColumn {
@@ -3310,12 +3360,12 @@ button.secondary:hover {
   display: grid;
   grid-template-columns:
     40px
-    minmax(150px, 1.65fr)
-    minmax(78px, 0.72fr)
-    minmax(104px, 0.82fr)
-    54px
-    minmax(72px, 0.58fr)
-    88px;
+    minmax(150px, 1.52fr)
+    minmax(92px, 0.78fr)
+    minmax(108px, 0.78fr)
+    72px
+    minmax(74px, 0.52fr)
+    100px;
   gap: 0;
   align-items: center;
   width: 100%;
@@ -3347,7 +3397,7 @@ button.secondary:hover {
 
 .projectTableHeader span {
   min-width: 0;
-  padding: 0 8px;
+  padding: 0 6px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3522,15 +3572,40 @@ button.secondary:hover {
 }
 
 .scoreCell {
+  justify-items: center;
   color: var(--text);
   font-weight: 800;
   text-align: center;
 }
 
 .scoreCell small {
-  color: rgba(134, 239, 172, 0.72);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 900;
+}
+
+.scoreSourceBadge {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid rgba(52, 211, 153, 0.22);
+  border-radius: 999px;
+  padding: 1px 5px;
+  color: rgba(209, 250, 229, 0.86);
+  background: rgba(34, 197, 94, 0.1);
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+}
+
+.scoreSourceBadge.final {
+  border-color: rgba(134, 239, 172, 0.52);
+  color: #052e16;
+  background: #86efac;
+}
+
+.scoreSourceBadge.draft {
+  border-color: rgba(96, 165, 250, 0.42);
+  color: #bfdbfe;
+  background: rgba(37, 99, 235, 0.16);
 }
 
 .scoreReviewCard {
@@ -3658,10 +3733,10 @@ button.secondary:hover {
   flex-wrap: nowrap;
   align-content: center;
   align-items: center;
-  justify-content: flex-end;
-  gap: 3px;
+  justify-content: center;
+  gap: 5px;
   min-height: 48px;
-  padding: 4px 5px;
+  padding: 4px 8px;
   overflow: hidden;
   white-space: nowrap;
 }
@@ -4782,12 +4857,12 @@ dialog::backdrop {
   .projectRow {
     grid-template-columns:
       40px
-      minmax(132px, 1.55fr)
-      minmax(72px, 0.68fr)
-      minmax(92px, 0.78fr)
-      50px
-      minmax(66px, 0.52fr)
-      84px;
+      minmax(132px, 1.45fr)
+      minmax(86px, 0.74fr)
+      minmax(94px, 0.72fr)
+      68px
+      minmax(68px, 0.48fr)
+      96px;
   }
 }
 

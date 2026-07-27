@@ -324,6 +324,7 @@ const labels = {
     weeklyNominationBoard: "Weekly nominations",
     weeklyNominationBoardHint: "See who nominated which projects for this week's meeting.",
     bpLeaderboardTitle: "BP leaderboard",
+    libraryLeaderboardTitle: "Library leaderboard",
     bpLeaderboardHint: "Top liked, most disliked, and BP views by teammate.",
     topLikedBp: "Top liked BP",
     topDislikedBp: "Top not interested / disliked",
@@ -678,6 +679,7 @@ const labels = {
     weeklyNominationBoard: "本周上会提名榜单",
     weeklyNominationBoardHint: "查看本周每位成员提名了哪些项目。",
     bpLeaderboardTitle: "BP 排行榜",
+    libraryLeaderboardTitle: "Library leaderboard",
     bpLeaderboardHint: "查看点赞最高、点踩/不感兴趣最多，以及成员浏览统计。",
     topLikedBp: "点赞最高 BP",
     topDislikedBp: "不感兴趣 / 点踩最多",
@@ -3877,7 +3879,9 @@ function projectRow(project) {
     ops.nominated_by?.length ? `${t("nominatedBy")} ${ops.nominated_by.length}` : "",
     project.operational_penalty ? `${t("recommendationPenalty")} ${project.operational_penalty}` : "",
   ].filter(Boolean);
-  const personalScoreLabel = project.personal_score_source === "confirmed" ? t("finalScore") : project.personal_score_source === "draft" ? t("draftScore") : t("baseScore");
+  const personalScoreSource = project.personal_score_source === "confirmed" ? "final" : project.personal_score_source === "draft" ? "draft" : "base";
+  const personalScoreLabel = personalScoreSource === "final" ? t("finalScore") : personalScoreSource === "draft" ? t("draftScore") : t("baseScore");
+  const personalScoreBadge = personalScoreSource === "final" ? "Final" : personalScoreSource === "draft" ? "Draft" : "Base";
   const scoreLabel = Number.isFinite(scoreValue) ? String(scoreValue) : "-";
   const teamSummary = firstUsefulProjectValue(project, ["team_highlights"]);
   const tractionSummary = firstUsefulProjectValue(project, ["traction"]);
@@ -3904,7 +3908,7 @@ function projectRow(project) {
       </div>
       <div class="projectCell scoreCell projectStackCell" data-label="${escapeHtml(t("scoreColumn"))}">
         <strong title="${escapeHtml(`${personalScoreLabel}: ${scoreLabel}`)}">${escapeHtml(scoreLabel)}</strong>
-        <small>${escapeHtml(personalScoreLabel)}</small>
+        <small class="scoreSourceBadge ${escapeHtml(personalScoreSource)}" title="${escapeHtml(personalScoreLabel)}">${escapeHtml(personalScoreBadge)}</small>
       </div>
       <div class="projectCell projectStackCell" data-label="${escapeHtml(t("riskLevelLabel"))}">
         <strong title="${escapeHtml(`${t("recommendation")}: ${recommendation}`)}">${escapeHtml(riskLevel)}</strong>
