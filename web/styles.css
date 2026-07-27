@@ -538,6 +538,14 @@ input.authErrorFlash {
   align-items: start;
 }
 
+.workbenchShell.scoringProfileNavLayout {
+  grid-template-columns: minmax(680px, 1fr) minmax(310px, 0.3fr);
+}
+
+.workbenchShell.scoringProfileNavLayout .leftRail {
+  display: none;
+}
+
 .leftRail,
 .centerRail,
 .rightRail {
@@ -626,6 +634,13 @@ input.authErrorFlash {
   height: 26px;
   font-size: 9px;
   letter-spacing: -0.03em;
+}
+
+.scoringProfileNavButton span {
+  width: 26px;
+  height: 26px;
+  font-size: 9px;
+  letter-spacing: -0.04em;
 }
 
 .centerRail {
@@ -1457,6 +1472,28 @@ button.secondary:hover {
   align-items: flex-start;
   gap: 10px;
   padding: 12px 14px 0;
+}
+
+.scoringProfilePopover {
+  width: min(430px, calc(100vw - 28px));
+  max-height: min(72dvh, 640px);
+  overflow: auto;
+  border-radius: 20px;
+  box-shadow: var(--shadow), var(--glow);
+}
+
+.scoringProfilePopover .sectionTitle {
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px 0;
+}
+
+.scoringProfilePopover .weightQuickBody {
+  padding: 12px 14px 14px;
+}
+
+.scoringProfilePopover .weightQuickActions button {
+  width: 100%;
 }
 
 .calendarDialog {
@@ -3270,6 +3307,12 @@ button.secondary:hover {
   display: none;
 }
 
+.libraryNumberCell {
+  justify-items: center;
+  padding-inline: 4px;
+  text-align: center;
+}
+
 .projectOpenButton {
   display: grid;
   justify-items: start;
@@ -3479,20 +3522,21 @@ button.secondary:hover {
 
 .rowActions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-content: center;
   align-items: center;
   justify-content: flex-end;
-  gap: 4px;
-  padding: 4px;
+  gap: 3px;
+  padding: 4px 5px;
   overflow: hidden;
+  white-space: nowrap;
 }
 
 .rowActions button {
-  width: 26px;
-  min-width: 26px;
-  height: 26px;
-  min-height: 26px;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  min-height: 24px;
   padding: 0;
   border-radius: 999px;
   font-size: 11px;
@@ -3515,7 +3559,7 @@ button.secondary:hover {
 .rowActions .buttonIcon,
 .rowActions .reactionIcon {
   margin: 0;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .rowActions .reactionButton strong {
@@ -4781,7 +4825,7 @@ dialog::backdrop {
   }
 
   .rowActions button {
-    width: 100%;
+    width: 24px;
   }
 
   .snippetSearchRow {

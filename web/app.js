@@ -946,6 +946,9 @@ const vrtDraftCloseButton = document.querySelector("#vrtDraftCloseButton");
 const calendarRailToggle = document.querySelector("#openCalendarRail");
 const calendarDialog = document.querySelector("#calendarDialog");
 const calendarCloseButton = document.querySelector("#calendarCloseButton");
+const scoringProfileOpenButton = document.querySelector("#scoringProfileOpenButton");
+const scoringProfileOverlay = document.querySelector("#scoringProfileOverlay");
+const scoringProfileCloseButton = document.querySelector("#scoringProfileCloseButton");
 const personalActivityOpenButton = document.querySelector("#personalActivityOpenButton");
 const personalActivityOverlay = document.querySelector("#personalActivityOverlay");
 const personalActivityCloseButton = document.querySelector("#personalActivityCloseButton");
@@ -1068,6 +1071,12 @@ calendarDialog?.addEventListener("close", () => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && vrtDraftDialog?.open) closeVrtDraftDialog();
   if (event.key === "Escape" && calendarDialog?.open) closeCalendarDialog();
+  if (event.key === "Escape" && scoringProfileOverlay && !scoringProfileOverlay.hidden) closeScoringProfilePanel();
+});
+scoringProfileOpenButton?.addEventListener("click", openScoringProfilePanel);
+scoringProfileCloseButton?.addEventListener("click", closeScoringProfilePanel);
+scoringProfileOverlay?.addEventListener("click", (event) => {
+  if (event.target === scoringProfileOverlay) closeScoringProfilePanel();
 });
 personalActivityOpenButton?.addEventListener("click", openPersonalActivityPanel);
 personalActivityCloseButton?.addEventListener("click", closePersonalActivityPanel);
@@ -1162,6 +1171,7 @@ function applyLanguage() {
 
 function openWeightEditor() {
   if (!weightEditorDialog) return;
+  closeScoringProfilePanel();
   if (typeof weightEditorDialog.showModal === "function") {
     weightEditorDialog.showModal();
   } else {
@@ -1169,6 +1179,19 @@ function openWeightEditor() {
   }
   renderFactorBuilder();
   renderProfileBoard();
+}
+
+function openScoringProfilePanel() {
+  if (!scoringProfileOverlay) return;
+  renderWeightQuickPanel();
+  scoringProfileOverlay.hidden = false;
+  scoringProfileOpenButton?.setAttribute("aria-expanded", "true");
+}
+
+function closeScoringProfilePanel() {
+  if (!scoringProfileOverlay) return;
+  scoringProfileOverlay.hidden = true;
+  scoringProfileOpenButton?.setAttribute("aria-expanded", "false");
 }
 
 function closeWeightEditor() {
@@ -3667,15 +3690,84 @@ function projectTableHeader() {
   `;
 }
 
+function isUnknownProjectValue(value) {
+  const text = String(value || "").trim();
+  if (!text) return true;
+  return /^(unknown|unknown project|n\/a|na|null|none|undefined|-+|--|未知|未知项目|不详|未披露|待定)$/i.test(text);
+}
+
+function cleanProjectDisplayText(value) {
+  const source = Array.isArray(value) ? value.filter(Boolean).join(" / ") : String(value || "");
+  return source
+    .replace(/\.(pdf|pptx?|docx?)$/i, "")
+    .replace(/[_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[#\-\s\d.()[\]]+/, "")
+    .trim();
+}
+
+function conciseProjectText(value, maxLength = 54) {
+  const text = cleanProjectDisplayText(value)
+    .split(/[\n\r。；;|]+/)
+    .map((part) => part.trim())
+    .find(Boolean) || "";
+  if (!text) return "";
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+}
+
+function fallbackProjectName(project) {
+  const profileCandidates = [
+    project.summary,
+    project.one_liner,
+    project.one_line_summary,
+    project.profile_summary,
+    project.title,
+    project.document_title,
+  ];
+  for (const candidate of profileCandidates) {
+    const text = conciseProjectText(candidate);
+    if (!isUnknownProjectValue(text)) return text;
+  }
+
+  const tags = Array.isArray(project.tags) ? project.tags.filter((tag) => !isUnknownProjectValue(tag)).slice(0, 2) : [];
+  const industry = isUnknownProjectValue(project.industry) ? "" : cleanProjectDisplayText(project.industry);
+  const tagName = conciseProjectText([...tags, industry].filter(Boolean).join(" / "), 42);
+  if (tagName) return lang === "zh" ? `${tagName} BP` : `${tagName} BP`;
+
+  const fileName = conciseProjectText(project.file_name, 48);
+  if (!isUnknownProjectValue(fileName)) return fileName;
+
+  return project.library_number ? `BP #${Number(project.library_number)}` : `BP ${project.document_id || ""}`.trim();
+}
+
+function projectDisplayInfo(project) {
+  const primary = [project.project_name, project.company_name]
+    .map(cleanProjectDisplayText)
+    .find((value) => !isUnknownProjectValue(value));
+  const fullName = primary || fallbackProjectName(project);
+  const title = conciseProjectText(fullName, 48) || fallbackProjectName(project);
+  const company = cleanProjectDisplayText(project.company_name);
+  const region = cleanProjectDisplayText(project.country_or_region);
+  const summary = conciseProjectText(project.one_liner || project.one_line_summary || project.summary, 70);
+  const sublineParts = [];
+  if (!isUnknownProjectValue(company) && company !== fullName) sublineParts.push(company);
+  if (!isUnknownProjectValue(region)) sublineParts.push(region);
+  if (!sublineParts.length && !isUnknownProjectValue(summary)) sublineParts.push(summary);
+  return {
+    title,
+    fullName,
+    subline: sublineParts.join(" / "),
+    summary,
+  };
+}
+
 function projectRow(project) {
-  const projectName = project.project_name || project.company_name || t("unknown");
-  const company = project.company_name || t("unknown");
+  const display = projectDisplayInfo(project);
   const libraryNumber = Number(project.library_number || 0);
-  const libraryNumberLabel = libraryNumber > 0 ? `#${String(libraryNumber).padStart(3, "0")}` : "#---";
+  const libraryNumberLabel = libraryNumber > 0 ? `#${libraryNumber}` : "-";
   const sector = project.industry || t("unknown");
-  const projectSubline = [company, project.country_or_region].filter(Boolean).join(" / ") || t("unknown");
   const stageCustomer = [project.customer_type, project.revenue_stage].filter(Boolean).join(" / ") || t("unknown");
-  const summary = project.one_line_summary || "";
+  const summary = display.summary || project.one_line_summary || project.summary || "";
   const ops = project.ops || {};
   const status = ops.global_status?.status || "new";
   const highlights = ops.highlights || {};
@@ -3694,12 +3786,11 @@ function projectRow(project) {
     <article class="projectRow ${highlights.highlighted_by_me ? "highlightedByMe" : highlights.count ? "highlightedByTeam" : ""}" role="row" data-project-row="${project.document_id}">
       <div class="projectCell libraryNumberCell projectStackCell" data-label="${escapeHtml(t("libraryNumber"))}" title="${escapeHtml(t("libraryNumberHint"))}">
         <strong>${escapeHtml(libraryNumberLabel)}</strong>
-        <small>${escapeHtml(t("libraryNumberHint"))}</small>
       </div>
       <div class="projectMain" data-label="${escapeHtml(t("projectName"))}">
-        <button type="button" class="projectOpenButton" data-document-id="${project.document_id}" title="${escapeHtml(t("view"))}: ${escapeHtml(projectName)}">
-          <span class="projectOpenName">${escapeHtml(projectName)}</span>
-          <small>${escapeHtml(projectSubline)}</small>
+        <button type="button" class="projectOpenButton" data-document-id="${project.document_id}" title="${escapeHtml(t("view"))}: ${escapeHtml(display.fullName)}">
+          <span class="projectOpenName" title="${escapeHtml(display.fullName)}">${escapeHtml(display.title)}</span>
+          ${display.subline ? `<small title="${escapeHtml(display.subline)}">${escapeHtml(display.subline)}</small>` : ""}
         </button>
       </div>
       <div class="projectCell projectStackCell" data-label="${escapeHtml(t("industryRegion"))}">

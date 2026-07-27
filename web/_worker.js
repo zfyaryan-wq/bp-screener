@@ -1097,6 +1097,7 @@ async function listProjects(request, env) {
       d.file_name,
       d.source_url,
       d.created_at AS document_created_at,
+      t.profile_json AS localized_profile_json,
       lo.library_number
     FROM projects p
     JOIN documents d ON d.id = p.document_id
@@ -5370,6 +5371,9 @@ function listProjectDto(project) {
     risk_level: project.risk_level,
     ai_related: Boolean(project.ai_related),
     tags: (project.tags || []).slice(0, 12),
+    summary: project.summary || "",
+    one_liner: project.one_liner || "",
+    title: project.title || project.document_title || "",
     one_line_summary: project.one_line_summary,
     screening_score: project.screening_score,
     team_score: project.team_score,
