@@ -350,16 +350,18 @@ const labels = {
     weeklyNominationBoard: "Weekly nominations",
     weeklyNominationBoardHint: "See who nominated which projects for this week's meeting.",
     bpLeaderboardTitle: "BP leaderboard",
-    libraryLeaderboardTitle: "Library leaderboard",
+    libraryLeaderboardTitle: "Leaderboard",
     bpLeaderboardHint: "Top liked, most disliked, and BP views by teammate.",
     topLikedBp: "Top liked BP",
     topDislikedBp: "Top not interested / disliked",
     bpViewStats: "BP view stats",
-    leaderboardTopLikedCompact: "点赞最高",
-    leaderboardTopDislikedCompact: "隐藏/点踩最多",
-    leaderboardViewsCompact: "浏览",
+    leaderboardTopLikedCompact: "Top liked",
+    leaderboardTopDislikedCompact: "Hidden/disliked",
+    leaderboardViewsCompact: "Views",
     viewsCount: "{count} viewed",
     noLeaderboardData: "No leaderboard data yet.",
+    leaderboardLoading: "Loading leaderboard...",
+    leaderboardUnavailable: "Leaderboard unavailable",
     noMyNominationHint: "You have not nominated a project this week.",
     nominateSelected: "Nominate selected BP",
     selectBpToNominate: "Select a BP from the list, then nominate it here.",
@@ -734,7 +736,7 @@ const labels = {
     weeklyNominationBoard: "本周上会提名榜单",
     weeklyNominationBoardHint: "查看本周每位成员提名了哪些项目。",
     bpLeaderboardTitle: "BP 排行榜",
-    libraryLeaderboardTitle: "Library leaderboard",
+    libraryLeaderboardTitle: "榜单",
     bpLeaderboardHint: "查看点赞最高、点踩/不感兴趣最多，以及成员浏览统计。",
     topLikedBp: "点赞最高 BP",
     topDislikedBp: "不感兴趣 / 点踩最多",
@@ -744,6 +746,8 @@ const labels = {
     leaderboardViewsCompact: "Views",
     viewsCount: "浏览 {count} 个 BP",
     noLeaderboardData: "暂时还没有排行榜数据。",
+    leaderboardLoading: "榜单加载中...",
+    leaderboardUnavailable: "榜单暂不可用",
     noMyNominationHint: "你本周还没有提名项目。",
     nominateSelected: "提名当前 BP",
     selectBpToNominate: "先在列表中选择一个 BP，再在这里提名。",
@@ -797,6 +801,7 @@ let activeWeightProfileId = Number(localStorage.getItem("bp-weight-profile-id") 
 let selectedDocumentId = 0;
 let selectedProject = null;
 let reviewBoard = null;
+let leaderboardLoadState = "idle";
 let scoringProfile = null;
 let scoringProfileRequestSeq = 0;
 let scoringProfileState = { phase: "idle", error: "" };
@@ -3133,6 +3138,12 @@ function normalizeScoringTemplateKey(value) {
 async function loadReviewBoard(options = {}) {
   if (!currentUser || !teamMembers.includes(currentUser)) return;
   const includeLeaderboards = options.includeLeaderboards !== false;
+  if (includeLeaderboards) {
+    leaderboardLoadState = "loading";
+    renderBpLeaderboards(reviewBoard?.leaderboards || null);
+  } else if (!reviewBoard?.leaderboards && leaderboardLoadState === "idle") {
+    leaderboardLoadState = "loading";
+  }
   const params = new URLSearchParams({
     lang,
     timezone: userTimezone,
@@ -3140,8 +3151,17 @@ async function loadReviewBoard(options = {}) {
     leaderboards: includeLeaderboards ? "1" : "0",
   });
   const response = await apiFetch(`/api/review/board?${params.toString()}`);
-  if (!response) return;
+  if (!response) {
+    if (includeLeaderboards) {
+      leaderboardLoadState = "error";
+      renderBpLeaderboards(null);
+    }
+    return;
+  }
   const data = await response.json();
+  if (includeLeaderboards) {
+    leaderboardLoadState = data.leaderboards ? "loaded" : "error";
+  }
   reviewBoard = {
     ...data,
     leaderboards: data.leaderboards || reviewBoard?.leaderboards || null,
@@ -3162,7 +3182,7 @@ function renderReviewBoard() {
   if (reviewWeekLabel) {
     reviewWeekLabel.textContent = [t("calendarLocalTimeNotice"), reviewBoard.week_start].filter(Boolean).join(" · ");
   }
-  renderBpLeaderboards(reviewBoard.leaderboards || {});
+  renderBpLeaderboards(reviewBoard.leaderboards);
   const shortlist = reviewBoard.shortlist || [];
   shortlistBoard.innerHTML = `
     <h3>${t("personalRepository")}</h3>
@@ -3193,13 +3213,12 @@ function renderReviewBoard() {
 
 function renderBpLeaderboards(leaderboards) {
   if (!bpLeaderboardSpotlight) return;
-  if (!leaderboards && !projects.length && projectListState.phase === "loading") {
-    bpLeaderboardSpotlight.innerHTML = overviewLoadingBlock("overviewLoading");
-    return;
-  }
-  if (!leaderboards && !projects.length && projectListState.phase === "error") {
-    bpLeaderboardSpotlight.innerHTML = overviewErrorBlock(projectListState.error);
-    bpLeaderboardSpotlight.querySelector("[data-overview-retry]")?.addEventListener("click", loadProjects);
+  if (!leaderboards) {
+    if (leaderboardLoadState === "error" || projectListState.phase === "error") {
+      bpLeaderboardSpotlight.innerHTML = `<p class="leaderboardState errorText">${escapeHtml(t("leaderboardUnavailable"))}</p>`;
+      return;
+    }
+    bpLeaderboardSpotlight.innerHTML = `<p class="leaderboardState loading">${escapeHtml(t("leaderboardLoading"))}</p>`;
     return;
   }
   const topLiked = leaderboards?.top_liked_projects || [];
@@ -3953,7 +3972,7 @@ function renderRecommendation(data) {
 
 function renderProjects(items) {
   const projectCountNode = document.querySelector("#projectCount");
-  if (projectCountNode) projectCountNode.textContent = String(items.length);
+  if (projectCountNode) projectCountNode.textContent = `${items.length} BPs`;
   if (projectCountMirror) projectCountMirror.textContent = String(items.length);
   renderProjectListStatus();
 
@@ -5297,13 +5316,19 @@ function renderCharts(items) {
   if (!chartGrid) return;
   if (!items.length && projectListState.phase === "loading") {
     chartGrid.innerHTML = overviewLoadingBlock("overviewLoading");
-    if (bpLeaderboardSpotlight) bpLeaderboardSpotlight.innerHTML = overviewLoadingBlock("overviewLoading");
+    if (bpLeaderboardSpotlight) {
+      leaderboardLoadState = "loading";
+      renderBpLeaderboards(null);
+    }
     return;
   }
   if (!items.length && projectListState.phase === "error") {
     chartGrid.innerHTML = overviewErrorBlock(projectListState.error);
     chartGrid.querySelector("[data-overview-retry]")?.addEventListener("click", loadProjects);
-    if (bpLeaderboardSpotlight) bpLeaderboardSpotlight.innerHTML = `<p class="subtle errorText">${escapeHtml(t("overviewLoadError"))}</p>`;
+    if (bpLeaderboardSpotlight) {
+      leaderboardLoadState = "error";
+      renderBpLeaderboards(null);
+    }
     return;
   }
   if (!items.length) {
@@ -5329,22 +5354,22 @@ function countBy(items, key) {
 }
 
 function barChart(title, rows) {
-  const max = Math.max(1, ...rows.map(([, count]) => count));
   return `
-    <article class="chartCard">
+    <article class="chartCard compactChartCard" ${buttonAttrs(`${title}: ${rows.map(([name, count]) => `${name} ${count}`).join(", ")}`)}>
       <h3>${escapeHtml(title)}</h3>
-      ${rows
-        .slice(0, 3)
-        .map(
-          ([name, count]) => `
-            <div class="barRow">
-              <span title="${escapeHtml(name)}">${escapeHtml(shorten(name))}</span>
-              <div class="barTrack"><div class="barFill" style="width:${(count / max) * 100}%"></div></div>
-              <strong>${count}</strong>
-            </div>
-          `,
-        )
-        .join("")}
+      <div class="chartChipRow">
+        ${rows
+          .slice(0, 2)
+          .map(
+            ([name, count]) => `
+              <span class="chartChip" title="${escapeHtml(name)}">
+                <b>${escapeHtml(shorten(name))}</b>
+                <small>${count}</small>
+              </span>
+            `,
+          )
+          .join("") || `<span class="chartChip empty">-</span>`}
+      </div>
     </article>
   `;
 }

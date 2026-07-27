@@ -220,13 +220,15 @@ select {
 
 .nav select {
   width: auto;
-  min-width: 114px;
+  min-width: 38px;
   border: 1px solid rgba(52, 211, 153, 0.38);
   border-radius: 999px;
   min-height: 34px;
-  padding: 7px 12px;
+  padding: 7px 8px;
   color: var(--text);
   background: rgba(2, 6, 23, 0.46);
+  font-weight: 900;
+  text-align: center;
 }
 
 .navUploadButton {
@@ -356,12 +358,12 @@ h1 {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   min-width: 0;
   overflow: hidden;
   border: 1px solid rgba(52, 211, 153, 0.18);
   border-radius: 18px;
-  padding: 5px 7px;
+  padding: 6px 8px;
   background: rgba(2, 8, 8, 0.38);
 }
 
@@ -1580,10 +1582,10 @@ button.secondary:hover {
 .libraryOverviewStack {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
   min-width: 0;
   min-height: 0;
-  max-height: clamp(190px, 21dvh, 280px);
+  max-height: clamp(116px, 16dvh, 168px);
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -1595,17 +1597,17 @@ button.secondary:hover {
 }
 
 .libraryOverviewStack .sectionTitle {
-  gap: 10px;
-  padding: 10px 12px 0;
+  gap: 6px;
+  padding: 6px 10px 0;
 }
 
 .libraryOverviewStack .sectionTitle h2 {
-  font-size: 16px;
+  font-size: 13px;
   line-height: 1.15;
 }
 
 .libraryOverviewStack .sectionTitle span {
-  display: block;
+  display: none;
   margin-top: 2px;
   color: var(--muted);
   font-size: 11px;
@@ -1614,12 +1616,12 @@ button.secondary:hover {
 
 .overviewMetricsRow {
   display: grid;
-  grid-template-columns: minmax(92px, 0.13fr) minmax(0, 0.5fr) minmax(260px, 0.37fr);
+  grid-template-columns: minmax(76px, 0.12fr) minmax(0, 1fr) minmax(220px, 0.32fr);
   align-items: stretch;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
   min-height: max-content;
-  padding: 8px 10px 6px;
+  padding: 5px 8px 7px;
 }
 
 .overviewStatus {
@@ -1648,12 +1650,12 @@ button.secondary:hover {
 
 .libraryLeaderboardCard {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
   margin: 0;
   border: 1px solid rgba(52, 211, 153, 0.16);
-  border-radius: 14px;
-  padding: 7px;
+  border-radius: 12px;
+  padding: 5px;
   background:
     radial-gradient(circle at 16% 0%, rgba(34, 197, 94, 0.1), transparent 42%),
     rgba(2, 8, 8, 0.4);
@@ -1669,7 +1671,7 @@ button.secondary:hover {
 
 .libraryLeaderboardHeader strong {
   color: #bbf7d0;
-  font-size: 12px;
+  font-size: 10px;
   line-height: 1.2;
   white-space: nowrap;
 }
@@ -2650,13 +2652,13 @@ button.secondary:hover {
 .bpLeaderboardGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
 }
 
 .libraryLeaderboardCard .bpLeaderboardGrid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 5px;
+  gap: 4px;
 }
 
 .compactLeaderboardGrid {
@@ -2666,12 +2668,12 @@ button.secondary:hover {
 .bpLeaderboardCard {
   display: grid;
   align-content: center;
-  gap: 3px;
+  gap: 2px;
   min-width: 0;
-  min-height: 58px;
+  min-height: 42px;
   border: 1px solid rgba(52, 211, 153, 0.18);
   border-radius: 10px;
-  padding: 6px;
+  padding: 4px 5px;
   color: #bbf7d0;
   background:
     radial-gradient(circle at 20% 0%, rgba(34, 197, 94, 0.12), transparent 42%),
@@ -2704,7 +2706,7 @@ button.bpLeaderboardCard:focus-visible {
   align-items: center;
   gap: 4px;
   color: #bbf7d0;
-  font-size: 10px;
+  font-size: 9px;
   line-height: 1.15;
 }
 
@@ -2718,7 +2720,7 @@ button.bpLeaderboardCard:focus-visible {
 .bpLeaderboardCardMain span,
 .bpLeaderboardCardValue {
   color: #d1fae5;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 900;
 }
 
@@ -2727,14 +2729,32 @@ button.bpLeaderboardCard:focus-visible {
   align-items: center;
   gap: 3px;
   color: #86efac;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 950;
 }
 
 .bpLeaderboardCard small {
   color: var(--muted);
-  font-size: 9px;
+  font-size: 8px;
   line-height: 1.2;
+}
+
+.leaderboardState {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  margin: 0;
+  border: 1px solid rgba(52, 211, 153, 0.14);
+  border-radius: 10px;
+  padding: 5px 7px;
+  color: var(--muted);
+  background: rgba(2, 8, 8, 0.46);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.leaderboardState.loading {
+  color: #bbf7d0;
 }
 
 .bpLeaderboardColumn {
@@ -2893,8 +2913,8 @@ button.bpLeaderboardCard:focus-visible {
 }
 
 .weeklyNominationTopCard .weeklyNominationPerson .avatar-large {
-  --avatar-size: 20px;
-  --avatar-font-size: 8px;
+  --avatar-size: 24px;
+  --avatar-font-size: 9px;
 }
 
 .weeklyNominationPerson strong,
@@ -2911,7 +2931,7 @@ button.bpLeaderboardCard:focus-visible {
 }
 
 .weeklyNominationTopCard .weeklyNominationPerson strong {
-  font-size: 8px;
+  font-size: 9px;
 }
 
 .weeklyNominationStatus {
@@ -3387,23 +3407,68 @@ button.bpLeaderboardCard:focus-visible {
 .chartGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: 5px;
   min-height: 0;
   padding: 0;
 }
 
 .chartCard {
   border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 8px;
+  border-radius: 10px;
+  padding: 5px;
   background: var(--card-soft);
-  overflow: visible;
+  overflow: hidden;
 }
 
 .chartCard h3 {
-  margin: 0 0 6px;
-  font-size: 12px;
+  margin: 0 0 4px;
+  overflow: hidden;
+  color: #bbf7d0;
+  font-size: 9px;
   line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compactChartCard {
+  min-height: 42px;
+}
+
+.chartChipRow {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.chartChip {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 50%;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid rgba(52, 211, 153, 0.14);
+  border-radius: 999px;
+  padding: 2px 5px;
+  color: var(--muted);
+  background: rgba(2, 8, 8, 0.42);
+  font-size: 9px;
+  line-height: 1.2;
+}
+
+.chartChip b {
+  min-width: 0;
+  overflow: hidden;
+  color: #d1fae5;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chartChip small {
+  color: #86efac;
+  font-size: 9px;
+  font-weight: 950;
 }
 
 .barRow {
@@ -3431,22 +3496,23 @@ button.bpLeaderboardCard:focus-visible {
 }
 
 .stat {
-  display: grid;
-  align-content: center;
-  min-height: 52px;
-  padding: 8px 10px;
-  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 5px 8px;
+  border-radius: 12px;
 }
 
 .stat span {
   display: block;
-  margin-bottom: 2px;
   color: var(--green);
-  font-size: 22px;
+  font-size: 14px;
   font-weight: 800;
+  white-space: nowrap;
 }
 
 .stat small {
+  display: none;
   color: var(--muted);
   font-size: 11px;
   line-height: 1.25;
@@ -5309,7 +5375,7 @@ dialog::backdrop {
   }
 
   .libraryOverviewStack {
-    max-height: clamp(180px, 24dvh, 280px);
+    max-height: clamp(112px, 18dvh, 160px);
     overflow-x: hidden;
     overflow-y: auto;
   }
@@ -5359,12 +5425,24 @@ dialog::backdrop {
     grid-template-columns: 1fr;
   }
 
-  .weeklyNominationTopCard .weeklyNominationGrid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+  .libraryOverviewPanel .overviewMetricsRow {
+    grid-template-columns: minmax(56px, 0.16fr) minmax(0, 1fr) minmax(120px, 0.34fr);
+  }
+
+  .libraryLeaderboardHeader span {
+    display: none;
   }
 
   .libraryLeaderboardCard .compactLeaderboardGrid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: 1fr;
+  }
+
+  .libraryLeaderboardCard .bpLeaderboardCard:nth-child(n + 2) {
+    display: none;
+  }
+
+  .weeklyNominationTopCard .weeklyNominationGrid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .weightEditorDialog .weightWorkspace {
@@ -5504,6 +5582,12 @@ dialog::backdrop {
     flex: 1 1 120px;
   }
 
+  .nav select {
+    flex: 0 0 38px;
+    min-width: 38px;
+    max-width: 44px;
+  }
+
   .currentUserBadge {
     flex: 1 1 100%;
   }
@@ -5514,6 +5598,22 @@ dialog::backdrop {
 
   .subtitle {
     font-size: 12px;
+  }
+
+  .libraryOverviewPanel .overviewMetricsRow {
+    grid-template-columns: minmax(46px, 0.14fr) minmax(0, 1fr) minmax(96px, 0.34fr);
+    gap: 4px;
+    padding-inline: 6px;
+  }
+
+  .libraryLeaderboardCard {
+    gap: 4px;
+    padding: 5px;
+  }
+
+  .libraryLeaderboardHeader strong,
+  .bpLeaderboardCard > strong {
+    font-size: 9px;
   }
 
   .uploadOverlay {
