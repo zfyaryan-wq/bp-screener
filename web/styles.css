@@ -1108,6 +1108,10 @@ select {
   flex-basis: 138px;
 }
 
+.visibilityFilterField {
+  flex-basis: 150px;
+}
+
 .filters input,
 .filters select {
   min-height: 30px;
@@ -3613,7 +3617,7 @@ button.bpLeaderboardCard:focus-visible {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 8px 10px;
-  align-items: center;
+  align-items: start;
   border-bottom: 1px solid rgba(52, 211, 153, 0.14);
   padding: 8px 10px;
   background:
@@ -3623,7 +3627,7 @@ button.bpLeaderboardCard:focus-visible {
 
 .bpListTitle {
   min-width: 112px;
-  padding-top: 0;
+  padding-top: 8px;
 }
 
 .bpListTitle h2 {
@@ -3634,8 +3638,79 @@ button.bpLeaderboardCard:focus-visible {
 }
 
 .bpListFilters {
-  justify-content: flex-end;
+  display: grid;
+  gap: 6px;
+  align-items: stretch;
+  justify-content: stretch;
   overflow: visible;
+}
+
+.bpListPrimaryControls,
+.bpListSecondaryControls {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.bpListPrimaryControls {
+  flex-wrap: nowrap;
+}
+
+.bpListPrimaryControls .keywordFilter {
+  min-width: min(320px, 100%);
+  flex: 1 1 560px;
+}
+
+.bpListToolbar .keywordFilterHint {
+  display: none;
+}
+
+.bpListPrimaryControls .filterActions {
+  flex: 0 0 auto;
+}
+
+.bpListSecondaryControls {
+  flex-wrap: wrap;
+}
+
+.bpListSecondaryControls .filterField {
+  min-width: 116px;
+  max-width: 190px;
+  flex: 1 1 128px;
+}
+
+.bpListSecondaryControls .sortFilter {
+  min-width: 176px;
+  max-width: 260px;
+  flex-basis: 196px;
+}
+
+.bpListSecondaryControls .visibilityFilterField {
+  min-width: 154px;
+  max-width: 220px;
+  flex-basis: 168px;
+}
+
+.bpListSecondaryControls .suggestedSearchChips {
+  min-width: min(280px, 100%);
+  flex: 1 1 320px;
+  justify-content: flex-end;
+  margin-top: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.bpListSecondaryControls .suggestedSearchChips::-webkit-scrollbar {
+  display: none;
+}
+
+.bpListSecondaryControls .suggestedSearchChips button {
+  flex: 0 0 auto;
+}
+
+.bpListSecondaryControls .advancedFilterDetails {
+  flex: 0 0 auto;
 }
 
 .projectListStatus {
@@ -5600,20 +5675,39 @@ dialog::backdrop {
   }
 
   .bpListFilters {
-    flex-wrap: wrap;
+    gap: 7px;
     justify-content: flex-start;
   }
 
-  .keywordFilter {
+  .bpListPrimaryControls {
+    flex-wrap: wrap;
+  }
+
+  .bpListPrimaryControls .keywordFilter {
+    min-width: min(100%, 260px);
     flex-basis: min(100%, 420px);
+  }
+
+  .bpListPrimaryControls .filterActions {
+    flex: 1 1 auto;
+  }
+
+  .bpListPrimaryControls .filterActions button {
+    flex: 1 1 92px;
+  }
+
+  .bpListSecondaryControls .filterField {
+    min-width: min(100%, 132px);
+    max-width: none;
   }
 
   .suggestedSearchChips {
     justify-content: flex-start;
+    min-width: 0;
   }
 
   .advancedFilterDetails {
-    flex: 1 1 100%;
+    flex: 1 1 auto;
   }
 
   .advancedFilterBody {
