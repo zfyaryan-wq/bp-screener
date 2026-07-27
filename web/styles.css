@@ -3277,13 +3277,13 @@ button.secondary:hover {
 .projectRow {
   display: grid;
   grid-template-columns:
-    42px
-    minmax(0, 1.8fr)
-    minmax(0, 0.95fr)
-    minmax(0, 0.72fr)
-    48px
-    minmax(0, 0.58fr)
-    96px;
+    40px
+    minmax(150px, 1.65fr)
+    minmax(78px, 0.72fr)
+    minmax(104px, 0.82fr)
+    54px
+    minmax(72px, 0.58fr)
+    88px;
   gap: 0;
   align-items: center;
   width: 100%;
@@ -3322,14 +3322,15 @@ button.secondary:hover {
 }
 
 .projectRow {
-  min-height: 44px;
+  min-height: 48px;
+  align-items: stretch;
   border: 0;
   border-bottom: 1px solid rgba(52, 211, 153, 0.1);
   border-radius: 0;
   padding: 0;
   background: transparent;
   box-shadow: none;
-  cursor: pointer;
+  cursor: default;
   transition:
     background 160ms ease,
     border-color 160ms ease;
@@ -3386,6 +3387,7 @@ button.secondary:hover {
 
 .projectOpenButton {
   display: grid;
+  align-content: center;
   justify-items: start;
   gap: 1px;
   width: 100%;
@@ -3462,18 +3464,27 @@ button.secondary:hover {
 }
 
 .projectCell {
+  display: grid;
+  align-content: center;
+  min-height: 48px;
   overflow: hidden;
   border: 0;
   border-left: 1px solid rgba(52, 211, 153, 0.06);
   border-radius: 0;
   padding: 6px 8px;
   background: transparent;
-  overflow-wrap: anywhere;
 }
 
 .scoreCell {
   color: var(--text);
   font-weight: 800;
+  text-align: center;
+}
+
+.scoreCell small {
+  color: rgba(134, 239, 172, 0.72);
+  font-size: 9px;
+  font-weight: 900;
 }
 
 .scoreReviewCard {
@@ -3542,8 +3553,13 @@ button.secondary:hover {
 
 .projectStackCell {
   display: grid;
+  min-width: 0;
   align-content: start;
   gap: 2px;
+}
+
+.projectCell.projectStackCell {
+  align-content: center;
 }
 
 .projectStackCell strong {
@@ -3598,6 +3614,7 @@ button.secondary:hover {
   align-items: center;
   justify-content: flex-end;
   gap: 3px;
+  min-height: 48px;
   padding: 4px 5px;
   overflow: hidden;
   white-space: nowrap;
@@ -3638,6 +3655,10 @@ button.secondary:hover {
   font-size: 10px;
 }
 
+.rowActions .likeActors {
+  display: none;
+}
+
 .rowActions button.secondary {
   margin-top: 0;
 }
@@ -3661,15 +3682,17 @@ button.secondary:hover {
 }
 
 .projectRowSummary {
+  overflow: hidden;
   margin: 0;
   color: var(--muted);
   font-size: 12px;
   line-height: 1.4;
+  text-overflow: ellipsis;
 }
 
 .projectRowDetailGrid {
   display: grid;
-  grid-template-columns: minmax(180px, 1.15fr) minmax(140px, 0.9fr) minmax(160px, 1fr) minmax(150px, 0.85fr);
+  grid-template-columns: repeat(auto-fit, minmax(142px, 1fr));
   gap: 8px;
 }
 
@@ -3707,6 +3730,7 @@ button.secondary:hover {
 
 .projectRowSecondaryActions button {
   min-height: 28px;
+  min-width: 0;
   margin-top: 0;
   padding: 5px 8px;
   border-radius: 999px;
@@ -4646,12 +4670,12 @@ dialog::backdrop {
   .projectRow {
     grid-template-columns:
       40px
-      minmax(0, 1.7fr)
-      minmax(0, 0.86fr)
-      minmax(0, 0.68fr)
-      46px
-      minmax(0, 0.54fr)
-      90px;
+      minmax(132px, 1.55fr)
+      minmax(72px, 0.68fr)
+      minmax(92px, 0.78fr)
+      50px
+      minmax(66px, 0.52fr)
+      84px;
   }
 }
 
@@ -4773,8 +4797,10 @@ dialog::backdrop {
     grid-template-columns: 1fr;
     align-items: start;
     gap: 9px;
+    padding: 8px;
   }
 
+  .projectMain,
   .projectCollabCluster,
   .presenceCell,
   .likesCell,
@@ -4796,6 +4822,7 @@ dialog::backdrop {
   }
 
   .projectCell,
+  .projectMain,
   .projectCollabCluster,
   .rowActions {
     border: 1px solid rgba(52, 211, 153, 0.12);
@@ -4805,6 +4832,7 @@ dialog::backdrop {
   }
 
   .rowActions {
+    justify-content: flex-start;
     padding-top: 4px;
   }
 

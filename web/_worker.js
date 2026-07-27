@@ -5343,8 +5343,16 @@ function normalizeProject(row) {
     updated_at: row.updated_at,
   };
   delete merged.localized_profile_json;
+  const documentTitle = firstProjectText(
+    merged.document_title,
+    merged.title,
+    merged.project_name,
+    merged.company_name,
+    merged.file_name,
+  );
   return {
     ...merged,
+    document_title: documentTitle,
     ai_related: Boolean(merged.ai_related),
     ai_category: parseJsonField(merged.ai_category),
     team_highlights: parseJsonField(merged.team_highlights),
@@ -5356,6 +5364,7 @@ function normalizeProject(row) {
 }
 
 function listProjectDto(project) {
+  const summary = firstProjectText(project.one_line_summary, project.summary, project.one_liner, project.business_model);
   return {
     id: project.id,
     document_id: project.document_id,
@@ -5371,10 +5380,15 @@ function listProjectDto(project) {
     risk_level: project.risk_level,
     ai_related: Boolean(project.ai_related),
     tags: (project.tags || []).slice(0, 12),
-    summary: project.summary || "",
+    summary,
     one_liner: project.one_liner || "",
-    title: project.title || project.document_title || "",
-    one_line_summary: project.one_line_summary,
+    title: project.title || project.document_title || project.file_name || "",
+    document_title: project.document_title || project.file_name || "",
+    one_line_summary: project.one_line_summary || summary,
+    business_model: project.business_model,
+    team_highlights: (project.team_highlights || []).slice(0, 4),
+    traction: (project.traction || []).slice(0, 4),
+    risks: (project.risks || []).slice(0, 4),
     screening_score: project.screening_score,
     team_score: project.team_score,
     traction_score: project.traction_score,
@@ -5397,8 +5411,22 @@ function parseJsonField(value) {
   try {
     return JSON.parse(value);
   } catch {
-    return [];
+    return String(value)
+      .split(/[\n\r,，;；|]+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
   }
+}
+
+function firstProjectText(...values) {
+  for (const value of values) {
+    const text = Array.isArray(value) ? value.filter(Boolean).join(" / ") : String(value || "");
+    const normalized = text.replace(/\s+/g, " ").trim();
+    if (normalized && !/^(unknown|n\/a|na|null|none|undefined|-+|未知|不详|未披露)$/i.test(normalized)) {
+      return normalized;
+    }
+  }
+  return "";
 }
 
 function parseObjectField(value) {
