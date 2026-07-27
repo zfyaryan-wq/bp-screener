@@ -28,7 +28,14 @@ def chat_completion(**kwargs):
     client = OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY, timeout=LLM_TIMEOUT_SECONDS)
     kwargs.setdefault("model", LLM_MODEL)
     kwargs["extra_body"] = llm_extra_body(kwargs.get("extra_body"))
-    return client.chat.completions.create(**kwargs)
+    try:
+        return client.chat.completions.create(**kwargs)
+    except Exception as exc:
+        if "response_format" not in kwargs or "response_format" not in str(exc):
+            raise
+        retry_kwargs = dict(kwargs)
+        retry_kwargs.pop("response_format", None)
+        return client.chat.completions.create(**retry_kwargs)
 
 
 def capped_max_tokens(limit: int) -> int:

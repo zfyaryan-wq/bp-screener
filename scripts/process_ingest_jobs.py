@@ -277,7 +277,7 @@ def process_job(
 
     file_path = download_job_file(job, download_dir)
     ensure_local_document_row(job, file_path, local_db)
-    ok, failed = ingest_path(file_path, use_llm=use_llm, force=True)
+    ok, failed = ingest_path(file_path, use_llm=use_llm, force=True, db_path=local_db)
     if failed or ok < 1:
         raise RuntimeError(f"Local ingest failed for {file_path.name}. ok={ok} failed={failed}")
 

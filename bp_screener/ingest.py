@@ -4,7 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from .config import INBOX_DIR
+from .config import DB_PATH, INBOX_DIR
 from .db import connect, get_document_for_path, mark_failed, replace_chunks, save_project_translation, upsert_document, upsert_project
 from .extractor import extract_profile
 from .parsers import SUPPORTED_SUFFIXES, chunk_pages, extract_pages, sample_for_llm
@@ -29,6 +29,7 @@ def ingest_path(
     use_llm: bool = True,
     limit: int | None = None,
     force: bool = False,
+    db_path: Path | None = None,
 ) -> tuple[int, int]:
     files = iter_files(path)
     if limit:
@@ -36,7 +37,7 @@ def ingest_path(
 
     ok = 0
     failed = 0
-    with connect() as conn:
+    with connect(db_path or DB_PATH) as conn:
         for file_path in files:
             existing = get_document_for_path(conn, file_path)
             if (

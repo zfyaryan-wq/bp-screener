@@ -11,3 +11,10 @@ FEISHU_BASE_FIELD_SOURCE_URL=Source URL
 FEISHU_BASE_FIELD_STATUS=Status
 FEISHU_BASE_FIELD_UPLOADED_BY=Uploaded By
 BP_UPLOAD_MAX_BYTES=20971520
+
+# Optional Worker-side ModelBest / OpenAI-compatible LLM settings.
+# Set LLM_API_KEY locally or as a Cloudflare secret; do not commit real keys.
+# LLM_BASE_URL=https://llm-center.modelbest.cn/llm/v1
+# LLM_API_KEY=replace-with-your-worker-api-key
+# LLM_MODEL=deepseek-v3.2
+# LLM_TIMEOUT_SECONDS=55

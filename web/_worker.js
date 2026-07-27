@@ -2541,6 +2541,29 @@ function llmModel(env) {
   return env.LLM_MODEL || "deepseek-ai/DeepSeek-V4-Pro";
 }
 
+function llmTimeoutMs(env) {
+  const seconds = Number(env.LLM_TIMEOUT_SECONDS || 55);
+  return Math.max(1000, Math.min(110000, seconds * 1000));
+}
+
+async function fetchLlmCompletion(env, requestBody) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort("LLM timeout"), llmTimeoutMs(env));
+  try {
+    return await fetch(`${llmBaseUrl(env)}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${env.LLM_API_KEY}`,
+      },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function callChatCompletion(env, { temperature = 0.2, maxTokens = 1000, messages = [] } = {}) {
   const requestBody = {
     model: llmModel(env),
@@ -2551,26 +2574,12 @@ async function callChatCompletion(env, { temperature = 0.2, maxTokens = 1000, me
     requestBody.max_tokens = maxTokens;
   }
   try {
-    let response = await fetch(`${llmBaseUrl(env)}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${env.LLM_API_KEY}`,
-      },
-      body: JSON.stringify(requestBody),
-    });
+    let response = await fetchLlmCompletion(env, requestBody);
     let bodyText = await response.text();
     if (!response.ok && response.status === 400 && /max_tokens/i.test(bodyText)) {
       const retryBody = { ...requestBody };
       delete retryBody.max_tokens;
-      response = await fetch(`${llmBaseUrl(env)}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${env.LLM_API_KEY}`,
-        },
-        body: JSON.stringify(retryBody),
-      });
+      response = await fetchLlmCompletion(env, retryBody);
       bodyText = await response.text();
     }
     if (!response.ok) {

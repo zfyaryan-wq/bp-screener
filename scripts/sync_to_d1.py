@@ -33,6 +33,17 @@ def row_insert(table: str, columns: list[str], row: sqlite3.Row) -> str:
     return f"INSERT OR REPLACE INTO {table} ({', '.join(columns)}) VALUES ({values});"
 
 
+def row_upsert(table: str, columns: list[str], conflict_columns: list[str], row: sqlite3.Row) -> str:
+    values = ", ".join(quote(row[column]) for column in columns)
+    conflict = ", ".join(conflict_columns)
+    update_columns = [column for column in columns if column not in conflict_columns]
+    updates = ", ".join(f"{column}=excluded.{column}" for column in update_columns)
+    return (
+        f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({values}) "
+        f"ON CONFLICT({conflict}) DO UPDATE SET {updates};"
+    )
+
+
 def object_key(document_id: int, file_name: str) -> str:
     safe_name = file_name.replace("\\", "_").replace("/", "_").strip()
     return f"documents/{document_id}/{safe_name}"
@@ -156,12 +167,18 @@ def export_seed(
             payload["source_url"] = payload.get("source_url") or (
                 object_key(payload["id"], payload["file_name"]) if include_file_keys else None
             )
-            handle.write(row_insert("documents", document_columns, payload) + "\n")
+            if document_id is not None:
+                handle.write(row_upsert("documents", document_columns, ["id"], payload) + "\n")
+            else:
+                handle.write(row_insert("documents", document_columns, payload) + "\n")
 
         project_where = "WHERE document_id = ?" if document_id is not None else ""
         project_params = (int(document_id),) if document_id is not None else ()
         for row in conn.execute(f"SELECT * FROM projects {project_where} ORDER BY id", project_params):
-            handle.write(row_insert("projects", project_columns, row) + "\n")
+            if document_id is not None:
+                handle.write(row_upsert("projects", project_columns, ["document_id"], row) + "\n")
+            else:
+                handle.write(row_insert("projects", project_columns, row) + "\n")
 
         chunk_where = "WHERE document_id = ?" if document_id is not None else ""
         chunk_limit = "" if document_id is not None else "LIMIT ?"
@@ -189,7 +206,10 @@ def export_seed(
             """,
             translation_params,
         ):
-            handle.write(row_insert("project_translations", translation_columns, row) + "\n")
+            if document_id is not None:
+                handle.write(row_upsert("project_translations", translation_columns, ["document_id", "lang"], row) + "\n")
+            else:
+                handle.write(row_insert("project_translations", translation_columns, row) + "\n")
 
         if document_id is None:
             for row in conn.execute(
