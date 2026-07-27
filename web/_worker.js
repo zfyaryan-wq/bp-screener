@@ -2818,7 +2818,7 @@ async function projectAssistant(request, documentId, env) {
     return json({ error: "Project not found." }, 404);
   }
   const context = await getProjectCollaboration(documentId, env, lang);
-  const chunks = await fetchProjectChunks(documentId, env, 8);
+  const chunks = await fetchProjectChunks(documentId, env, 8, question);
   if (!env.LLM_API_KEY) {
     return json(fallbackProjectAssistantAnswer(question, project, context, lang));
   }
@@ -3076,7 +3076,25 @@ async function fetchProjectForContext(documentId, env, lang = "en") {
   return row ? normalizeProject(row, lang) : null;
 }
 
-async function fetchProjectChunks(documentId, env, limit = 8) {
+async function fetchProjectChunks(documentId, env, limit = 8, question = "") {
+  const terms = questionSearchTerms(question);
+  if (terms.length) {
+    const clauses = terms.map(() => "LOWER(content) LIKE ?").join(" OR ");
+    const matches = await env.DB.prepare(`
+      SELECT page, chunk_index, content
+      FROM chunks
+      WHERE document_id = ?
+        AND (${clauses})
+      ORDER BY chunk_index ASC
+      LIMIT 80
+    `).bind(documentId, ...terms.map((term) => `%${term}%`)).all();
+    const ranked = (matches.results || [])
+      .map((chunk) => ({ ...chunk, relevance_score: chunkRelevanceScore(chunk, terms) }))
+      .filter((chunk) => chunk.relevance_score > 0)
+      .sort((a, b) => b.relevance_score - a.relevance_score || Number(a.chunk_index || 0) - Number(b.chunk_index || 0))
+      .slice(0, limit);
+    if (ranked.length) return ranked;
+  }
   const chunks = await env.DB.prepare(`
     SELECT page, chunk_index, content
     FROM chunks
@@ -3085,6 +3103,31 @@ async function fetchProjectChunks(documentId, env, limit = 8) {
     LIMIT ?
   `).bind(documentId, limit).all();
   return chunks.results || [];
+}
+
+function questionSearchTerms(question = "") {
+  const stopwords = new Set([
+    "the", "and", "for", "with", "about", "this", "that", "what", "which", "why", "how", "是否", "这个", "项目", "关于", "哪些", "什么", "以及",
+  ]);
+  return [...new Set(String(question || "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .match(/[\p{L}\p{N}]+/gu) || [])]
+    .map((term) => term.trim())
+    .filter((term) => term.length >= 2 && !stopwords.has(term))
+    .slice(0, 8);
+}
+
+function chunkRelevanceScore(chunk = {}, terms = []) {
+  const content = String(chunk.content || "").normalize("NFKC").toLowerCase();
+  if (!content) return 0;
+  return terms.reduce((score, term) => {
+    const first = content.indexOf(term);
+    if (first < 0) return score;
+    const occurrences = content.split(term).length - 1;
+    const earlyBonus = Math.max(0, 3 - Math.floor(first / 600));
+    return score + occurrences * 4 + earlyBonus;
+  }, 0);
 }
 
 function fallbackProjectAssistantAnswer(question, project, context, lang = "en") {

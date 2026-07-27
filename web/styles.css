@@ -3574,6 +3574,31 @@ button.bpLeaderboardCard:focus-visible {
     rgba(2, 8, 8, 0.58);
 }
 
+.keywordVrtAskHint {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 10px;
+  border: 1px solid rgba(94, 234, 212, 0.24);
+  border-radius: 16px;
+  padding: 10px;
+  color: #ccfbf1;
+  background:
+    radial-gradient(circle at top left, rgba(20, 184, 166, 0.14), transparent 38%),
+    rgba(2, 8, 8, 0.5);
+}
+
+.keywordVrtAskHint p {
+  margin: 0;
+  color: #d1fae5;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.keywordVrtAskHint small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
 .projectLoadingState,
 .projectListErrorBlock {
   display: grid;
@@ -4772,6 +4797,35 @@ button.bpLeaderboardCard:focus-visible {
 
 .recommendResult {
   min-height: 0;
+}
+
+.compareResult {
+  margin-top: 10px;
+}
+
+.compareResult:empty {
+  display: none;
+}
+
+.compareResultCard {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(134, 239, 172, 0.22);
+  border-radius: 16px;
+  padding: 10px;
+  color: #d1fae5;
+  background: rgba(2, 8, 8, 0.46);
+}
+
+.compareResultCard p,
+.compareResultCard ul {
+  margin: 0;
+}
+
+.compareResultCard h4 {
+  margin: 2px 0 0;
+  color: #bbf7d0;
+  font-size: 12px;
 }
 
 .aiPanel button {

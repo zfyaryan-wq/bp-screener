@@ -20,7 +20,7 @@ const labels = {
     unknown: "Unknown",
     sortBy: "Sort by",
     sortUpdated: "Newest updated",
-    sortAiRanked: "VRT Agent ranked",
+    sortAiRanked: "VRT heuristic rank",
     sortScreening: "Screening score",
     sortRecommendation: "Recommendation",
     sortTeam: "Team strength",
@@ -34,7 +34,11 @@ const labels = {
     keywordPlaceholder: "Search industry, company, technology, region, stage, or theme",
     keywordFilterHint: "Keyword is the main search. Other filters narrow the result.",
     keywordSearching: "Searching...",
-    noFilteredProjects: "No matches. Try a broader keyword or clear filters.",
+    noFilteredProjects: "No matches. Try a broader keyword, clear filters, or ask VRT Ask.",
+    weakKeywordHint: "Few matches for this keyword. VRT Ask can translate it into broader BP library criteria.",
+    emptyKeywordHint: "No direct keyword matches. Try VRT Ask for a broader library search.",
+    askVrtAskWithKeyword: "Ask VRT Ask",
+    suggestedVrtAskQueries: "Suggested VRT Ask prompts",
     vrtAsk: "VRT Ask",
     projects: "Projects",
     projectName: "Project name",
@@ -143,7 +147,13 @@ const labels = {
     uploadDropReady: "Drop the BP to upload",
     uploadIdle: "Waiting for a BP file.",
     uploadUploading: "Uploading to Feishu Drive...",
-    uploadSuccess: "Uploaded to Feishu Drive. VRT Agent parsing will run in the downstream pipeline.",
+    uploadSuccess: "Uploaded to Feishu Drive.",
+    uploadQueued: "Queued for parsing",
+    uploadProcessing: "Processing",
+    uploadParsed: "Parsed",
+    uploadIngestFailed: "Failed",
+    uploadIngestHint: "Parsing is asynchronous; check the ingest runbook or refresh the library after the job completes.",
+    uploadJobNumber: "Ingest job #{id}",
     uploadFailed: "Upload failed",
     uploadLimit: "PDF, PPT, PPTX, DOC, DOCX. Default limit: 20 MB.",
     uploadInvalidType: "Unsupported file type. Please choose PDF, PPT, PPTX, DOC, or DOCX.",
@@ -300,10 +310,10 @@ const labels = {
     teamPresence: "Team status",
     commentsQuestions: "Comments & Questions",
     addComment: "Add comment",
-    askAboutBp: "Ask VRT Agent about this BP",
+    askAboutBp: "VRT Brief / Project Assistant",
     markNotInterested: "Not interested",
-    askProjectAi: "Ask project VRT Agent",
-    projectQuestionPlaceholder: "Ask about this BP and team comments",
+    askProjectAi: "Ask Project Assistant",
+    projectQuestionPlaceholder: "Ask within this BP, source chunks, and team comments",
     teamViewSummary: "Team view summary",
     commentsEmpty: "No comments or questions yet.",
     viewed: "Viewed",
@@ -331,6 +341,9 @@ const labels = {
     nominateThisWeek: "Nominate this week",
     similarBp: "Similar BP",
     compare: "Compare",
+    compareResultTitle: "Compare result",
+    compareTradeoffs: "Tradeoffs",
+    risksToCheck: "Risks to check",
     personalRepository: "Personal repository",
     personalActivity: "Personal activity",
     weeklyNominations: "Weekly nominations",
@@ -391,7 +404,7 @@ const labels = {
     unknown: "未知",
     sortBy: "排序方式",
     sortUpdated: "最近更新",
-    sortAiRanked: "VRT Agent 智能排序",
+    sortAiRanked: "VRT 启发式综合排序",
     sortScreening: "综合筛选分",
     sortRecommendation: "推荐等级",
     sortTeam: "团队强度",
@@ -405,7 +418,11 @@ const labels = {
     keywordPlaceholder: "搜索行业、公司、技术、地区、阶段或主题",
     keywordFilterHint: "关键词是主搜索；其他筛选用于继续收窄。",
     keywordSearching: "搜索中...",
-    noFilteredProjects: "没有匹配结果。试试更宽泛关键词，或清空筛选。",
+    noFilteredProjects: "没有匹配结果。试试更宽泛关键词、清空筛选，或用 VRT Ask 提问。",
+    weakKeywordHint: "当前关键词命中较少。可以让 VRT Ask 把它扩展成更适合全库检索的判断标准。",
+    emptyKeywordHint: "没有直接关键词命中。可以用 VRT Ask 做更宽泛的全库提问。",
+    askVrtAskWithKeyword: "用 VRT Ask 提问",
+    suggestedVrtAskQueries: "建议的 VRT Ask 问法",
     vrtAsk: "VRT 提问",
     projects: "项目",
     projectName: "项目名",
@@ -514,7 +531,13 @@ const labels = {
     uploadDropReady: "松开即可上传 BP",
     uploadIdle: "等待选择 BP 文件。",
     uploadUploading: "正在上传到飞书云文档...",
-    uploadSuccess: "已上传到飞书云文档。VRT Agent 解析会在后续导入流水线中执行。",
+    uploadSuccess: "已上传到飞书云文档。",
+    uploadQueued: "Queued for parsing",
+    uploadProcessing: "Processing",
+    uploadParsed: "Parsed",
+    uploadIngestFailed: "Failed",
+    uploadIngestHint: "解析是异步流程；可查看 ingest runbook，或在任务完成后刷新项目库。",
+    uploadJobNumber: "Ingest job #{id}",
     uploadFailed: "上传失败",
     uploadLimit: "支持 PDF、PPT、PPTX、DOC、DOCX。默认限制：20 MB。",
     uploadInvalidType: "文件类型不支持。请选择 PDF、PPT、PPTX、DOC 或 DOCX。",
@@ -671,10 +694,10 @@ const labels = {
     teamPresence: "团队状态",
     commentsQuestions: "评论与问题",
     addComment: "添加评论",
-    askAboutBp: "向 VRT Agent 询问这个 BP",
+    askAboutBp: "VRT Brief / Project Assistant",
     markNotInterested: "不感兴趣",
-    askProjectAi: "询问项目 VRT Agent",
-    projectQuestionPlaceholder: "围绕这个 BP 和团队评论提问",
+    askProjectAi: "询问 Project Assistant",
+    projectQuestionPlaceholder: "围绕当前 BP、原文片段和团队评论提问",
     teamViewSummary: "团队观点摘要",
     commentsEmpty: "暂时还没有评论或问题。",
     viewed: "访问过",
@@ -702,6 +725,9 @@ const labels = {
     nominateThisWeek: "提名本周上会",
     similarBp: "相似 BP",
     compare: "对比",
+    compareResultTitle: "对比结果",
+    compareTradeoffs: "取舍点",
+    risksToCheck: "待核查风险",
     personalRepository: "个人仓库",
     personalActivity: "个人活动",
     weeklyNominations: "本周提名",
@@ -1230,6 +1256,14 @@ function openVrtAskDialog() {
   recommendQuestion?.focus();
 }
 
+function openVrtAskWithQuestion(question = "") {
+  openVrtAskDialog();
+  if (!recommendQuestion) return;
+  recommendQuestion.value = String(question || "").trim();
+  resizeRecommendComposer();
+  recommendQuestion.focus();
+}
+
 function closeVrtAskDialog() {
   if (vrtAskDialog?.open) vrtAskDialog.close();
 }
@@ -1710,6 +1744,32 @@ function closeUploadOverlay() {
   uploadOpenButton?.focus();
 }
 
+function uploadIngestStatusMessage(data = {}, fileName = "") {
+  const job = data.ingest_job || {};
+  const status = String(job.status || "queued").toLowerCase();
+  const statusKeyByValue = {
+    queued: "uploadQueued",
+    processing: "uploadProcessing",
+    done: "uploadParsed",
+    parsed: "uploadParsed",
+    failed: "uploadIngestFailed",
+  };
+  const statusKey = statusKeyByValue[status] || "uploadQueued";
+  const stateByValue = {
+    queued: "busy",
+    processing: "busy",
+    done: "success",
+    parsed: "success",
+    failed: "error",
+  };
+  const jobLabel = job.id ? `${t("uploadJobNumber").replace("{id}", String(job.id))}: ` : "";
+  const warningText = data.warnings?.length ? ` ${t("uploadWarnings")}: ${data.warnings.join(" ")}` : "";
+  return {
+    state: stateByValue[status] || "busy",
+    message: `${t("uploadSuccess")} ${fileName} · ${jobLabel}${t(statusKey)}. ${t("uploadIngestHint")}${warningText}`,
+  };
+}
+
 async function uploadBp(file) {
   if (!currentUser || !teamMembers.includes(currentUser)) {
     loginOverlay.classList.remove("hidden");
@@ -1743,10 +1803,8 @@ async function uploadBp(file) {
     setUploadStatus(`${t("uploadFailed")}: ${data.error || response.statusText}`, "error");
     return;
   }
-  const warningText = data.warnings?.length
-    ? ` ${t("uploadWarnings")}: ${data.warnings.join(" ")}`
-    : "";
-  setUploadStatus(`${t("uploadSuccess")} ${file.name}${warningText}`, "success");
+  const ingestStatus = uploadIngestStatusMessage(data, file.name);
+  setUploadStatus(ingestStatus.message, ingestStatus.state);
   await loadFilterOptions();
   await loadProjects();
 }
@@ -1858,12 +1916,52 @@ function projectListEmptyBlock() {
   return `
     <div class="panel projectEmpty projectFilteredEmpty">
       <strong>${escapeHtml(t("noFilteredProjects"))}</strong>
+      ${keywordSearchAssistBlock(0)}
       <div class="projectEmptyActions">
         ${value("#keyword") ? `<button type="button" class="secondary compactButton" data-clear-keyword>${escapeHtml(t("clearKeyword"))}</button>` : ""}
         <button type="button" class="secondary compactButton" data-reset-filters>${escapeHtml(t("resetFilters"))}</button>
       </div>
     </div>
   `;
+}
+
+function keywordSearchAssistBlock(resultCount = 0) {
+  const keyword = value("#keyword").trim();
+  if (!keyword) return "";
+  const prompts = suggestedKeywordPrompts(keyword);
+  return `
+    <div class="keywordVrtAskHint">
+      <p>${escapeHtml(resultCount === 0 ? t("emptyKeywordHint") : t("weakKeywordHint"))}</p>
+      <button type="button" class="secondary compactButton" data-open-vrt-ask-keyword="${escapeHtml(keyword)}">${escapeHtml(t("askVrtAskWithKeyword"))}</button>
+      <small>${escapeHtml(t("suggestedVrtAskQueries"))}</small>
+      <div class="suggestedSearchChips">
+        ${prompts.map((prompt) => `<button type="button" data-vrt-ask-suggestion="${escapeHtml(prompt)}">${escapeHtml(prompt)}</button>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function suggestedKeywordPrompts(keyword) {
+  const text = String(keyword || "").trim();
+  if (!text) return [];
+  return lang === "zh"
+    ? [
+        `全库里哪些项目最符合「${text}」，并且团队和进展证据较强？`,
+        `围绕「${text}」找 5 个值得优先看的 BP，并说明风险。`,
+      ]
+    : [
+        `Which BP library projects best match "${text}" with strong team and traction evidence?`,
+        `Find 5 projects related to "${text}" and explain the key risks to check.`,
+      ];
+}
+
+function bindKeywordVrtAskActions(root) {
+  root?.querySelectorAll("[data-open-vrt-ask-keyword]").forEach((button) => {
+    button.addEventListener("click", () => openVrtAskWithQuestion(button.dataset.openVrtAskKeyword || value("#keyword")));
+  });
+  root?.querySelectorAll("[data-vrt-ask-suggestion]").forEach((button) => {
+    button.addEventListener("click", () => openVrtAskWithQuestion(button.dataset.vrtAskSuggestion || ""));
+  });
 }
 
 function overviewLoadingBlock(messageKey = "overviewLoading") {
@@ -3874,6 +3972,7 @@ function renderProjects(items) {
     grid.innerHTML = hasActiveProjectFilters()
       ? projectListEmptyBlock()
       : `<div class="panel projectEmpty">${t("noProjects")}</div>`;
+    bindKeywordVrtAskActions(grid);
     grid.querySelector("[data-clear-keyword]")?.addEventListener("click", () => {
       if (!keywordInput) return;
       keywordInput.value = "";
@@ -3886,9 +3985,11 @@ function renderProjects(items) {
   }
 
   grid.innerHTML = `
+    ${value("#keyword") && items.length <= 3 ? keywordSearchAssistBlock(items.length) : ""}
     ${projectTableHeader()}
     ${items.map(projectRow).join("")}
   `;
+  bindKeywordVrtAskActions(grid);
   grid.querySelectorAll("[data-document-id]").forEach((button) => {
     button.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -4676,6 +4777,7 @@ function renderProjectOps(project, similar = []) {
         <div class="similarList">
           ${similar.length ? similar.map(similarProjectCard).join("") : `<p class="subtle">${t("aiThinking")}</p>`}
         </div>
+        <div id="compareResult" class="compareResult" aria-live="polite"></div>
       </details>
     </div>
   `;
@@ -4988,12 +5090,32 @@ async function compareWithSelected(candidateId) {
   });
   if (!response) return;
   const data = await response.json();
-  const message = [
-    data.verdict,
-    ...(data.tradeoffs || []),
-    ...(data.risks_to_check || []).map((item) => `${t("risks")}: ${item}`),
-  ].filter(Boolean).join("\n");
-  alert(message || JSON.stringify(data.rows || [], null, 2));
+  renderCompareResult(data);
+}
+
+function renderCompareResult(data = {}) {
+  const target = document.querySelector("#compareResult");
+  if (!target) return;
+  if (data.error) {
+    target.innerHTML = `<p class="errorText">${escapeHtml(data.error)}</p>`;
+    return;
+  }
+  target.innerHTML = `
+    <article class="compareResultCard">
+      <strong>${escapeHtml(t("compareResultTitle"))}</strong>
+      ${data.verdict ? `<p>${escapeHtml(data.verdict)}</p>` : ""}
+      ${
+        data.tradeoffs?.length
+          ? `<h4>${escapeHtml(t("compareTradeoffs"))}</h4><ul>${data.tradeoffs.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
+          : ""
+      }
+      ${
+        data.risks_to_check?.length
+          ? `<h4>${escapeHtml(t("risksToCheck"))}</h4><ul>${data.risks_to_check.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
+          : ""
+      }
+    </article>
+  `;
 }
 
 async function loadProjectContext(documentId) {

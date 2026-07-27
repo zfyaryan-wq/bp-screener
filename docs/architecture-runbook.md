@@ -21,6 +21,8 @@ BP Screener is sized for a five-person review team. Keep the system simple: Clou
 
 - VRT Agent recommends, summarizes, and drafts score reviews. It must not automatically decide nominations, votes, final scores, or meeting selections.
 - WhatsApp is not part of the core workflow for now. Keep discussion and review state inside the app/D1.
+- The Web app plus Pages Worker is the production review path. Streamlit/Python screens remain offline analysis or operator tooling and should not become a second production UI.
+- Python hybrid RAG can keep improving behind `bp_screener.services.rag`; when the hosted app needs it, expose it through a small service/API consumed by the Worker instead of migrating the Web workflow.
 
 ## Why No Heavy Middleware Yet
 
