@@ -21,5 +21,7 @@ BP_UPLOAD_MAX_BYTES=20971520
 # Set LLM_API_KEY locally or as a Cloudflare secret; do not commit real keys.
 # LLM_BASE_URL=https://llm-center.modelbest.cn/llm/v1
 # LLM_API_KEY=replace-with-your-worker-api-key
-# LLM_MODEL=deepseek-v3.2
+# LLM_MODEL=deepseek-v4-flash
+# LLM_PROVIDER_ID=
+# LLM_ENABLE_THINKING=false
 # LLM_TIMEOUT_SECONDS=55

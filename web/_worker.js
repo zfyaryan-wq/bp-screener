@@ -2535,16 +2535,32 @@ function buildCompareMatrix(projects, lang = "en") {
 }
 
 function llmBaseUrl(env) {
-  return String(env.LLM_BASE_URL || "https://api.siliconflow.cn/v1").replace(/\/$/, "");
+  return String(env.LLM_BASE_URL || "https://llm-center.modelbest.cn/llm/v1").replace(/\/$/, "");
 }
 
 function llmModel(env) {
-  return env.LLM_MODEL || "deepseek-ai/DeepSeek-V4-Pro";
+  return env.LLM_MODEL || "deepseek-v4-flash";
+}
+
+function llmExtraBody(env) {
+  const extra = { enable_thinking: envFlag(env.LLM_ENABLE_THINKING) };
+  const providerId = String(env.LLM_PROVIDER_ID || "").trim();
+  if (providerId) {
+    extra.providerId = providerId;
+  }
+  return extra;
 }
 
 function llmTimeoutMs(env) {
   const seconds = Number(env.LLM_TIMEOUT_SECONDS || 55);
   return Math.max(1000, Math.min(110000, seconds * 1000));
+}
+
+function llmErrorMessage(response, bodyText = "") {
+  const payload = safeJsonParse(bodyText) || {};
+  const upstreamMessage = String(payload?.error?.message || payload?.message || "").slice(0, 180);
+  const suffix = upstreamMessage ? `: ${upstreamMessage}` : "";
+  return `LLM request failed: ${response.status}${suffix}`;
 }
 
 async function fetchLlmCompletion(env, requestBody) {
@@ -2570,6 +2586,7 @@ async function callChatCompletion(env, { temperature = 0.2, maxTokens = 1000, me
     model: llmModel(env),
     temperature,
     messages,
+    ...llmExtraBody(env),
   };
   if (Number.isFinite(maxTokens) && maxTokens > 0) {
     requestBody.max_tokens = maxTokens;
@@ -2584,7 +2601,7 @@ async function callChatCompletion(env, { temperature = 0.2, maxTokens = 1000, me
       bodyText = await response.text();
     }
     if (!response.ok) {
-      return { ok: false, status: response.status, error: `LLM request failed: ${response.status} ${bodyText.slice(0, 300)}` };
+      return { ok: false, status: response.status, error: llmErrorMessage(response, bodyText) };
     }
     const payload = safeJsonParse(bodyText) || {};
     return {
@@ -2593,7 +2610,7 @@ async function callChatCompletion(env, { temperature = 0.2, maxTokens = 1000, me
       content: extractChatContent(payload),
     };
   } catch (error) {
-    return { ok: false, status: 0, error: `LLM request failed: ${String(error?.message || error).slice(0, 300)}` };
+    return { ok: false, status: 0, error: `LLM request failed: ${String(error?.message || error).slice(0, 180)}` };
   }
 }
 

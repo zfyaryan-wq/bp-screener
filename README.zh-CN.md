@@ -91,7 +91,7 @@ copy .env.example .env
 ```env
 LLM_BASE_URL=https://llm-center.modelbest.cn/llm/v1
 LLM_API_KEY=replace-with-your-local-api-key
-LLM_MODEL=deepseek-v3.2
+LLM_MODEL=deepseek-v4-flash
 LLM_PROVIDER_ID=
 LLM_ENABLE_THINKING=false
 LLM_MAX_TOKENS=4096
@@ -102,7 +102,7 @@ LLM_TIMEOUT_SECONDS=120
 
 真实 API key 只放在本地 `.env`，不要提交到 Git。`.env` 已经在 `.gitignore` 中忽略。
 
-如果暂时没有模型接口，可以在网页里取消勾选 “使用 DeepSeek V3.2 抽取”。系统会使用简单关键词兜底，适合测试流程，不建议用于正式筛选。
+如果暂时没有模型接口，可以在网页里取消勾选 “使用 LLM 抽取”。系统会使用简单关键词兜底，适合测试流程，不建议用于正式筛选。
 
 ## 可选本地 OCR
 

@@ -91,7 +91,7 @@ Edit `.env`:
 ```env
 LLM_BASE_URL=https://llm-center.modelbest.cn/llm/v1
 LLM_API_KEY=replace-with-your-local-api-key
-LLM_MODEL=deepseek-v3.2
+LLM_MODEL=deepseek-v4-flash
 LLM_PROVIDER_ID=
 LLM_ENABLE_THINKING=false
 LLM_MAX_TOKENS=4096
@@ -102,7 +102,7 @@ The system calls ModelBest through its OpenAI-compatible chat completion API. `L
 
 Keep the real API key in `.env` only. `.env` is ignored by Git and should not be committed.
 
-If no model endpoint is available yet, uncheck "Use DeepSeek V3.2 extraction" in the web app. The system will use a basic keyword-based fallback, which is useful for testing the workflow but not recommended for real screening.
+If no model endpoint is available yet, uncheck "Use LLM extraction" in the web app. The system will use a basic keyword-based fallback, which is useful for testing the workflow but not recommended for real screening.
 
 ## Optional Local OCR
 
@@ -345,7 +345,7 @@ You need to provide:
 - OCR is not wired in yet, so scanned PDFs may produce little or no text.
 - Search is currently keyword-based with SQLite FTS; vector search can be added later.
 - Cloudflare search currently uses simple D1 `LIKE` queries; for large public datasets, add D1 FTS or a dedicated search service later.
-- LLM quality depends on the SiliconFlow model configuration and its context length.
+- LLM quality depends on the ModelBest model configuration and its context length.
 - For 10,000 decks, use CLI batch ingestion instead of processing everything through the web UI at once.
 
 ## Roadmap

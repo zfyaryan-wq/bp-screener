@@ -20,7 +20,7 @@ INBOX_DIR = project_path(os.getenv("BP_INBOX_DIR", "data/inbox"))
 
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://llm-center.modelbest.cn/llm/v1")
 LLM_API_KEY = os.getenv("LLM_API_KEY", "replace-with-your-local-api-key")
-LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-v3.2")
+LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-v4-flash")
 LLM_PROVIDER_ID = os.getenv("LLM_PROVIDER_ID", "").strip()
 LLM_ENABLE_THINKING = os.getenv("LLM_ENABLE_THINKING", "false").lower() == "true"
 LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "4096"))
