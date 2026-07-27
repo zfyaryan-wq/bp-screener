@@ -12,6 +12,7 @@ DROP TABLE IF EXISTS bp_reactions;
 DROP TABLE IF EXISTS bp_activity;
 DROP TABLE IF EXISTS bp_comments;
 DROP TABLE IF EXISTS account_access_codes;
+DROP TABLE IF EXISTS bp_ai_analysis_artifacts;
 DROP TABLE IF EXISTS bp_user_scores;
 DROP TABLE IF EXISTS bp_score_drafts;
 DROP TABLE IF EXISTS weight_factors;
@@ -192,6 +193,29 @@ CREATE TABLE bp_user_scores (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY(document_id, actor, template_key),
+  FOREIGN KEY(document_id) REFERENCES documents(id),
+  FOREIGN KEY(profile_id) REFERENCES weight_profiles(id)
+);
+
+CREATE TABLE bp_ai_analysis_artifacts (
+  id INTEGER PRIMARY KEY,
+  document_id INTEGER NOT NULL,
+  actor TEXT NOT NULL DEFAULT '',
+  artifact_type TEXT NOT NULL DEFAULT 'brief',
+  lang TEXT NOT NULL DEFAULT 'en',
+  profile_id INTEGER,
+  version INTEGER NOT NULL DEFAULT 1,
+  input_hash TEXT NOT NULL DEFAULT '',
+  prompt_version TEXT NOT NULL DEFAULT '',
+  model TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'succeeded',
+  artifact_json TEXT NOT NULL DEFAULT '{}',
+  sources_json TEXT NOT NULL DEFAULT '[]',
+  confidence_json TEXT,
+  warnings_json TEXT,
+  feedback_json TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(document_id) REFERENCES documents(id),
   FOREIGN KEY(profile_id) REFERENCES weight_profiles(id)
 );

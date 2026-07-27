@@ -284,6 +284,23 @@ const labels = {
     invalidAccessCode: "Unable to verify this team member.",
     rightContext: "BP Context",
     selectProjectHint: "Select a project to review the BP and team context here.",
+    aiAnalysis: "AI Analysis",
+    aiAnalysisHint: "On-demand project brief grounded in this BP's source snippets.",
+    aiAnalysisEmpty: "No AI analysis brief yet.",
+    generateAiAnalysis: "Generate AI analysis",
+    regenerateAiAnalysis: "Regenerate",
+    aiAnalysisLoading: "Loading AI analysis...",
+    aiAnalysisGenerating: "Generating AI analysis...",
+    aiAnalysisError: "AI analysis failed. Please try again.",
+    aiAnalysisMeta: "Version {version} · {model} · {updated}",
+    sourceCitations: "Sources",
+    domainPrimer: "Domain primer",
+    bpModel: "BP model",
+    claimsEvidence: "Claims & evidence",
+    founderQuestions: "Founder questions",
+    meetingPrep: "Meeting prep",
+    missingInfo: "Missing info",
+    scoreLens: "Score lens",
     bpPreview: "BP Preview",
     openInNew: "Open in new window",
     feishuEmbedHint: "Feishu may block iframe embedding. If the preview is blank, open it in a new window.",
@@ -653,6 +670,23 @@ const labels = {
     invalidAccessCode: "无法验证该团队成员。",
     rightContext: "BP 上下文",
     selectProjectHint: "选择一个项目后，在这里查看 BP、评论和团队状态。",
+    aiAnalysis: "AI 分析",
+    aiAnalysisHint: "按需生成、基于当前 BP 原文片段的项目简报。",
+    aiAnalysisEmpty: "还没有 AI 分析简报。",
+    generateAiAnalysis: "生成 AI 分析",
+    regenerateAiAnalysis: "重新生成",
+    aiAnalysisLoading: "正在加载 AI 分析...",
+    aiAnalysisGenerating: "正在生成 AI 分析...",
+    aiAnalysisError: "AI 分析失败，请重试。",
+    aiAnalysisMeta: "版本 {version} · {model} · {updated}",
+    sourceCitations: "来源",
+    domainPrimer: "领域背景",
+    bpModel: "BP 模型",
+    claimsEvidence: "主张与证据",
+    founderQuestions: "创始人问题",
+    meetingPrep: "会议准备",
+    missingInfo: "缺失信息",
+    scoreLens: "评分视角",
     bpPreview: "BP 预览",
     openInNew: "新窗口打开",
     feishuEmbedHint: "飞书可能禁止 iframe 嵌入；如果预览空白，请用新窗口打开。",
@@ -764,6 +798,7 @@ let weightProfiles = [];
 let activeWeightProfileId = Number(localStorage.getItem("bp-weight-profile-id") || 0);
 let selectedDocumentId = 0;
 let selectedProject = null;
+let analysisRequestSeq = 0;
 let reviewBoard = null;
 let leaderboardLoadState = "idle";
 let scoringProfile = null;
@@ -1252,6 +1287,7 @@ function applyLanguage() {
   renderProjectList();
   if (selectedProject) renderProjectOps(selectedProject);
   if (selectedProject) renderScoreReviewCard(selectedProject);
+  if (selectedProject) renderAiAnalysisCard(selectedProject.ai_analysis || null, selectedProject.ai_analysis_state || "idle");
 }
 
 function openWeightEditor() {
@@ -4203,6 +4239,7 @@ async function showProject(documentId) {
       <strong>${t("teamPresence")}</strong>
       <div>${renderPresenceChips(project.collaboration?.statuses || [])}</div>
     </div>
+    <section id="aiAnalysisCard" class="aiAnalysisCard" aria-live="polite"></section>
     <div class="detailGrid">
       ${detailItem(t("industry"), project.industry)}
       ${detailItem(t("stageLabel"), project.financing_stage)}
@@ -4247,12 +4284,186 @@ async function showProject(documentId) {
     openSourceFile(event.currentTarget.dataset.fileId, event.currentTarget.dataset.fileUrl);
   });
   renderScoreReviewCard(project);
+  renderAiAnalysisCard(null, "loading");
   renderBpPreview(project);
   renderProjectOps(project);
   openProjectDialog();
   await recordProjectActivity(selectedDocumentId, "viewed", { refresh: false });
+  loadProjectAnalysis(selectedDocumentId);
   await loadProjectContext(selectedDocumentId);
   await loadSimilarProjects(selectedDocumentId);
+}
+
+async function loadProjectAnalysis(documentId) {
+  if (!documentId || !selectedProject) return;
+  const requestId = ++analysisRequestSeq;
+  renderAiAnalysisCard(null, "loading");
+  const params = new URLSearchParams({ type: "brief", lang });
+  const response = await apiFetch(`/api/projects/${documentId}/analysis?${params.toString()}`);
+  if (requestId !== analysisRequestSeq || Number(documentId) !== Number(selectedDocumentId)) return;
+  if (!response) {
+    renderAiAnalysisCard(null, "error", t("aiAnalysisError"));
+    return;
+  }
+  const data = await response.json().catch(() => ({}));
+  if (data.error) {
+    renderAiAnalysisCard(null, "error", data.error);
+    return;
+  }
+  selectedProject.ai_analysis = data.artifact || null;
+  selectedProject.ai_analysis_state = "idle";
+  renderAiAnalysisCard(data.artifact || null, "idle");
+}
+
+async function generateProjectAnalysis() {
+  if (!selectedDocumentId || !selectedProject) return;
+  const requestId = ++analysisRequestSeq;
+  selectedProject.ai_analysis_state = "generating";
+  renderAiAnalysisCard(selectedProject.ai_analysis || null, "generating");
+  const finishVrtAgentWork = beginVrtAgentWork();
+  try {
+    const response = await apiFetch(`/api/projects/${selectedDocumentId}/analysis`, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "brief",
+        lang,
+        profile_id: activeWeightProfileId || null,
+        metadata: clientMetadata(),
+      }),
+    });
+    if (requestId !== analysisRequestSeq) return;
+    if (!response) {
+      renderAiAnalysisCard(selectedProject.ai_analysis || null, "error", t("aiAnalysisError"));
+      return;
+    }
+    const data = await response.json().catch(() => ({}));
+    if (data.error) {
+      renderAiAnalysisCard(selectedProject.ai_analysis || null, "error", data.error);
+      return;
+    }
+    selectedProject.ai_analysis = data.artifact || null;
+    selectedProject.ai_analysis_state = "idle";
+    renderAiAnalysisCard(data.artifact || null, "idle");
+  } finally {
+    finishVrtAgentWork();
+  }
+}
+
+function renderAiAnalysisCard(artifact, state = "idle", message = "") {
+  const card = document.querySelector("#aiAnalysisCard");
+  if (!card) return;
+  const isLoading = state === "loading";
+  const isGenerating = state === "generating";
+  const isBusy = isLoading || isGenerating;
+  const model = artifact?.model || "";
+  const updated = artifact?.updated_at ? formatLocalDateTime(artifact.updated_at) : "";
+  const meta = artifact
+    ? t("aiAnalysisMeta")
+        .replace("{version}", String(artifact.version || 1))
+        .replace("{model}", model || "AI")
+        .replace("{updated}", updated || t("unknown"))
+    : "";
+  card.innerHTML = `
+    <div class="aiAnalysisHeader">
+      <div>
+        <h3>${escapeHtml(t("aiAnalysis"))}</h3>
+        <p>${escapeHtml(t("aiAnalysisHint"))}</p>
+      </div>
+      <button type="button" class="${artifact ? "secondary compactButton" : "compactButton"}" data-generate-analysis ${isBusy ? "disabled" : ""}>
+        ${escapeHtml(artifact ? t("regenerateAiAnalysis") : t("generateAiAnalysis"))}
+      </button>
+    </div>
+    ${
+      isBusy
+        ? `<p class="subtle">${escapeHtml(isGenerating ? t("aiAnalysisGenerating") : t("aiAnalysisLoading"))}</p>`
+        : message
+          ? `<p class="errorText">${escapeHtml(message)}</p>`
+          : artifact
+            ? `${meta ? `<small class="analysisMeta">${escapeHtml(meta)}</small>` : ""}${renderAnalysisBrief(artifact)}`
+            : `<p class="subtle">${escapeHtml(t("aiAnalysisEmpty"))}</p>`
+    }
+  `;
+  card.querySelector("[data-generate-analysis]")?.addEventListener("click", generateProjectAnalysis);
+}
+
+function renderAnalysisBrief(record) {
+  const brief = record?.artifact || {};
+  const sourceMap = new Map((record.sources || brief.sources || []).map((source) => [source.source_id, source]));
+  const sections = [
+    analysisTextSection(t("domainPrimer"), brief.domain_primer),
+    analysisTextSection(t("bpModel"), brief.bp_model),
+    analysisItemSection(t("claimsEvidence"), brief.claims_evidence, sourceMap, ["claim", "evidence", "support_level"]),
+    analysisItemSection(t("risks"), brief.risks, sourceMap, ["risk", "why_it_matters", "evidence"]),
+    analysisListSection(t("founderQuestions"), brief.founder_questions),
+    analysisListSection(t("meetingPrep"), brief.meeting_prep),
+    analysisListSection(t("missingInfo"), brief.missing_info),
+    brief.score_lens ? analysisObjectSection(t("scoreLens"), brief.score_lens) : "",
+  ].filter(Boolean);
+  return `<div class="analysisSections">${sections.join("")}</div>`;
+}
+
+function analysisTextSection(title, text) {
+  const value = String(text || "").trim();
+  if (!value) return "";
+  return `<article class="analysisSection"><h4>${escapeHtml(title)}</h4><p>${escapeHtml(value)}</p></article>`;
+}
+
+function analysisListSection(title, items) {
+  const values = (Array.isArray(items) ? items : []).map((item) => String(item || "").trim()).filter(Boolean).slice(0, 8);
+  if (!values.length) return "";
+  return `<article class="analysisSection"><h4>${escapeHtml(title)}</h4><ul>${values.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul></article>`;
+}
+
+function analysisItemSection(title, items, sourceMap, keys) {
+  const values = Array.isArray(items) ? items.slice(0, 8) : [];
+  if (!values.length) return "";
+  return `
+    <article class="analysisSection">
+      <h4>${escapeHtml(title)}</h4>
+      <div class="analysisItemList">
+        ${values.map((item) => analysisItemCard(item, sourceMap, keys)).join("")}
+      </div>
+    </article>
+  `;
+}
+
+function analysisItemCard(item, sourceMap, keys) {
+  if (typeof item === "string") return `<div class="analysisItem"><p>${escapeHtml(item)}</p></div>`;
+  const lines = keys
+    .map((key) => String(item?.[key] || "").trim())
+    .filter(Boolean)
+    .map((line, index) => (index === 0 ? `<strong>${escapeHtml(line)}</strong>` : `<p>${escapeHtml(line)}</p>`))
+    .join("");
+  return `<div class="analysisItem">${lines}${analysisCitationChips(item?.source_ids, sourceMap)}</div>`;
+}
+
+function analysisObjectSection(title, value) {
+  const entries = Object.entries(value || {})
+    .map(([key, item]) => [key, Array.isArray(item) ? item.join(" / ") : String(item || "")])
+    .filter(([, item]) => item.trim())
+    .slice(0, 6);
+  if (!entries.length) return "";
+  return `
+    <article class="analysisSection">
+      <h4>${escapeHtml(title)}</h4>
+      <div class="analysisFacts">
+        ${entries.map(([key, item]) => `<span><small>${escapeHtml(key)}</small>${escapeHtml(item)}</span>`).join("")}
+      </div>
+    </article>
+  `;
+}
+
+function analysisCitationChips(sourceIds, sourceMap) {
+  const chips = (Array.isArray(sourceIds) ? sourceIds : [])
+    .map((sourceId) => sourceMap.get(sourceId))
+    .filter(Boolean)
+    .slice(0, 4)
+    .map((source) => {
+      const page = source.page ? `${t("page")} ${source.page}` : `#${source.chunk_index || ""}`;
+      const label = `${source.source_id} · ${page}`;
+      return `<span class="analysisCitation" title="${escapeHtml(source.snippet || source.note || "")}">${escapeHtml(label)}</span>`;
+    });
+  return chips.length ? `<div class="analysisCitations"><small>${escapeHtml(t("sourceCitations"))}</small>${chips.join("")}</div>` : "";
 }
 
 function renderScoreReviewCard(project) {

@@ -26,6 +26,7 @@ Recommended order for a new or partially migrated D1 database:
 7. `cloudflare/migrate_weight_profiles.sql`: adds weight profiles, likes, comments, and profile events.
 8. `cloudflare/migrate_bp_scoring.sql`: adds AI drafts and user final scores; run after weight profiles because it references `weight_profiles`.
 9. `cloudflare/migrate_project_translations.sql`: adds generated per-language project profiles.
+10. `cloudflare/migrate_ai_analysis_artifacts.sql`: adds on-demand, project-scoped AI analysis brief artifacts. This migration is non-destructive and only creates a new table plus indexes.
 
 Run each migration once, then verify key tables or columns before moving to the next file. For existing databases, inspect the current schema and apply only missing non-destructive migrations:
 
@@ -88,6 +89,12 @@ Treat VRT tools as narrow capabilities with human review in the loop:
 - `process_ingest_job`: operate one queued ingestion job through the dry-run/apply script path.
 
 These tools may use LLM calls, but their source of truth remains D1 plus Feishu source files. They should return citations, warnings, and editable drafts rather than taking irreversible workflow actions.
+
+## AI Analysis Brief V1
+
+AI Analysis Brief v1 is an optional project-detail feature, not a global search or scoring replacement. A reviewer opens one BP and clicks "Generate AI analysis" to create a compact brief for that project and language; the Worker reads the existing D1 project fields and source chunks, asks the ModelBest-compatible LLM for JSON, stores a versioned artifact in `bp_ai_analysis_artifacts`, and returns it to the modal.
+
+The brief is grounded in stored BP snippets and must mark missing or unsupported evidence instead of overclaiming. It is not batch-generated, does not replace VRT Ask, and should not be treated as human scoring or an investment decision.
 
 ## Upload Ingestion Loop
 

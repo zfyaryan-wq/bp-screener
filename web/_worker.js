@@ -106,6 +106,12 @@ export default {
       if (auth) return auth;
       return await projectAssistant(request, Number(assistantMatch[1]), env);
     }
+    const analysisMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/analysis$/);
+    if (analysisMatch) {
+      const auth = await authorizeApi(request, env);
+      if (auth) return auth;
+      return await projectAnalysis(request, Number(analysisMatch[1]), env);
+    }
     const scoreReviewMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/score-review$/);
     if (scoreReviewMatch) {
       const auth = await authorizeApi(request, env);
@@ -2885,6 +2891,277 @@ partner_cues: array of short cues such as "Quan already raised X" or "Gary and F
     : { answer: result.content, team_summary: context.team_summary, partner_cues: [], source: "fallback", warning: "Project assistant returned invalid JSON." });
 }
 
+async function projectAnalysis(request, documentId, env) {
+  if (!Number.isFinite(documentId) || documentId <= 0) {
+    return json({ error: "Invalid project id." }, 400);
+  }
+  await ensureAiAnalysisArtifactsTable(env);
+  const url = new URL(request.url);
+  const actor = request.headers.get("x-bp-user") || "";
+  if (request.method === "GET") {
+    const artifactType = normalizeAnalysisArtifactType(url.searchParams.get("type"));
+    const lang = localizedLang(url.searchParams.get("lang"));
+    const artifact = await latestAnalysisArtifact(env, documentId, artifactType, lang);
+    if (!artifact) {
+      const project = await fetchProjectForContext(documentId, env, lang);
+      if (!project) return json({ error: "Project not found." }, 404);
+    }
+    return json({ artifact });
+  }
+  if (request.method !== "POST") {
+    return json({ error: "Method not allowed." }, 405);
+  }
+  const body = await request.json().catch(() => ({}));
+  const artifactType = normalizeAnalysisArtifactType(body.type || url.searchParams.get("type"));
+  if (artifactType !== "brief") {
+    return json({ error: "Only brief analysis is supported in v1." }, 400);
+  }
+  const lang = localizedLang(body.lang || url.searchParams.get("lang"));
+  const profileId = Number(body.profile_id || body.profileId || 0) || null;
+  const project = await fetchProjectForContext(documentId, env, lang);
+  if (!project) return json({ error: "Project not found." }, 404);
+  if (!env.LLM_API_KEY) {
+    return json({ error: "LLM is not configured. Set LLM_API_KEY before generating AI analysis." }, 503);
+  }
+
+  const sources = await analysisSources(documentId, env);
+  const promptVersion = "ai-analysis-brief-v1";
+  const inputHash = await sha256Hex(JSON.stringify({
+    promptVersion,
+    artifactType,
+    lang,
+    project: candidatePromptProject(project),
+    sources,
+  }));
+  const result = await generateAnalysisBrief(project, sources, lang, env, promptVersion);
+  if (!result.ok) return json({ error: result.error }, result.status || 502);
+  const version = await nextAnalysisArtifactVersion(env, documentId, artifactType, lang);
+  const artifactJson = JSON.stringify(result.artifact);
+  const sourcesJson = JSON.stringify(sources);
+  const confidenceJson = result.artifact.confidence || result.artifact.confidence_json
+    ? JSON.stringify(result.artifact.confidence || result.artifact.confidence_json)
+    : null;
+  const warningsJson = result.artifact.warnings || result.artifact.missing_info
+    ? JSON.stringify(result.artifact.warnings || result.artifact.missing_info)
+    : null;
+  const feedbackJson = body.feedback ? JSON.stringify(parseObjectField(body.feedback)) : null;
+  const inserted = await env.DB.prepare(`
+    INSERT INTO bp_ai_analysis_artifacts(
+      document_id, actor, artifact_type, lang, profile_id, version, input_hash,
+      prompt_version, model, status, artifact_json, sources_json, confidence_json,
+      warnings_json, feedback_json, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'succeeded', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+  `).bind(
+    documentId,
+    actor,
+    artifactType,
+    lang,
+    profileId,
+    version,
+    inputHash,
+    promptVersion,
+    llmModel(env),
+    artifactJson,
+    sourcesJson,
+    confidenceJson,
+    warningsJson,
+    feedbackJson,
+  ).run();
+  const artifactId = Number(inserted?.meta?.last_row_id || 0);
+  const artifact = artifactId
+    ? await analysisArtifactById(env, artifactId)
+    : await latestAnalysisArtifact(env, documentId, artifactType, lang);
+  return json({ artifact }, 201);
+}
+
+async function generateAnalysisBrief(project, sources, lang, env, promptVersion) {
+  const answerLanguage = lang === "zh" ? "Chinese" : "English";
+  const result = await callChatCompletion(env, {
+    temperature: 0.16,
+    maxTokens: 1800,
+    messages: [
+      {
+        role: "system",
+        content:
+          `You create compact, evidence-grounded BP analysis briefs for a review team. Use only the supplied project facts and source snippets. If evidence is missing, say unsupported or missing; never invent traction, customers, metrics, partnerships, or founder facts. Return JSON only, without markdown fences. Write every user-facing string in ${answerLanguage}.`,
+      },
+      {
+        role: "user",
+        content: `Prompt version: ${promptVersion}
+Project facts:
+${JSON.stringify(candidatePromptProject(project), null, 2)}
+
+Source snippets with source_id:
+${JSON.stringify(sources, null, 2)}
+
+Return a single JSON object with these keys:
+domain_primer: short explanation of the domain and why it matters;
+bp_model: compact business/product model summary;
+claims_evidence: array of {claim, evidence, source_ids, support_level};
+risks: array of {risk, why_it_matters, evidence, source_ids};
+founder_questions: array of questions to ask founders;
+meeting_prep: array of prep notes for the review meeting;
+missing_info: array of missing or unsupported facts to verify;
+sources: array of {source_id, page, chunk_index, note};
+score_lens: optional object with positives, concerns, suggested_focus;
+confidence: optional object with level and rationale;
+warnings: optional array of grounding warnings.`,
+      },
+    ],
+  });
+  if (!result.ok) {
+    return { ok: false, status: 502, error: "AI analysis generation failed. Please try again later." };
+  }
+  const parsed = parseLlmJson(result.content);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { ok: false, status: 502, error: "AI analysis returned invalid JSON. Please regenerate." };
+  }
+  return { ok: true, artifact: normalizeAnalysisBrief(parsed, sources) };
+}
+
+async function analysisSources(documentId, env) {
+  const chunks = await fetchProjectChunks(
+    documentId,
+    env,
+    10,
+    "business model traction team founder risk revenue customer market product technology",
+  );
+  return (chunks || []).slice(0, 10).map((chunk, index) => ({
+    source_id: `C${index + 1}`,
+    page: Number(chunk.page || 0) || null,
+    chunk_index: Number(chunk.chunk_index || 0),
+    snippet: compactSnippet(chunk.content, 900),
+  }));
+}
+
+function normalizeAnalysisBrief(parsed, sources = []) {
+  const sourceIds = new Set((sources || []).map((source) => source.source_id));
+  const artifact = {
+    domain_primer: String(parsed.domain_primer || ""),
+    bp_model: String(parsed.bp_model || ""),
+    claims_evidence: normalizeAnalysisItems(parsed.claims_evidence, ["claim", "evidence", "support_level"], sourceIds),
+    risks: normalizeAnalysisItems(parsed.risks, ["risk", "why_it_matters", "evidence"], sourceIds),
+    founder_questions: normalizeStringList(parsed.founder_questions),
+    meeting_prep: normalizeStringList(parsed.meeting_prep),
+    missing_info: normalizeStringList(parsed.missing_info),
+    sources: normalizeAnalysisSources(parsed.sources, sources),
+  };
+  if (parsed.score_lens && typeof parsed.score_lens === "object") artifact.score_lens = parsed.score_lens;
+  if (parsed.confidence && typeof parsed.confidence === "object") artifact.confidence = parsed.confidence;
+  if (Array.isArray(parsed.warnings)) artifact.warnings = normalizeStringList(parsed.warnings);
+  return artifact;
+}
+
+function normalizeAnalysisItems(items, textKeys = [], sourceIds = new Set()) {
+  return (Array.isArray(items) ? items : [])
+    .slice(0, 8)
+    .map((item) => {
+      if (typeof item === "string") return { text: item.slice(0, 1200), source_ids: [] };
+      const normalized = {};
+      for (const key of textKeys) normalized[key] = String(item?.[key] || "").slice(0, 1200);
+      normalized.source_ids = Array.isArray(item?.source_ids)
+        ? item.source_ids.map((id) => String(id || "").trim()).filter((id) => sourceIds.has(id)).slice(0, 4)
+        : [];
+      return normalized;
+    })
+    .filter((item) => Object.values(item).some((value) => Array.isArray(value) ? value.length : String(value || "").trim()));
+}
+
+function normalizeStringList(items) {
+  return (Array.isArray(items) ? items : [items])
+    .map((item) => typeof item === "string" ? item : item?.text || item?.question || item?.note || "")
+    .map((item) => String(item || "").trim().slice(0, 1200))
+    .filter(Boolean)
+    .slice(0, 10);
+}
+
+function normalizeAnalysisSources(items, fallbackSources = []) {
+  const byId = new Map((fallbackSources || []).map((source) => [source.source_id, source]));
+  const normalized = (Array.isArray(items) ? items : [])
+    .map((item) => {
+      const sourceId = String(item?.source_id || "").trim();
+      const fallback = byId.get(sourceId) || {};
+      return {
+        source_id: sourceId,
+        page: Number(item?.page ?? fallback.page ?? 0) || null,
+        chunk_index: Number(item?.chunk_index ?? fallback.chunk_index ?? 0),
+        note: String(item?.note || "").slice(0, 500),
+        snippet: fallback.snippet || "",
+      };
+    })
+    .filter((item) => item.source_id && byId.has(item.source_id));
+  return normalized.length ? normalized : fallbackSources;
+}
+
+function compactSnippet(value, limit = 900) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  return text.length > limit ? `${text.slice(0, limit - 3)}...` : text;
+}
+
+function normalizeAnalysisArtifactType(value) {
+  return String(value || "brief").trim().toLowerCase() === "brief" ? "brief" : String(value || "").trim().toLowerCase();
+}
+
+async function sha256Hex(value) {
+  const data = new TextEncoder().encode(String(value || ""));
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return bytesToHex(new Uint8Array(digest));
+}
+
+async function nextAnalysisArtifactVersion(env, documentId, artifactType, lang) {
+  const row = await env.DB.prepare(`
+    SELECT MAX(version) AS max_version
+    FROM bp_ai_analysis_artifacts
+    WHERE document_id = ? AND artifact_type = ? AND lang = ?
+  `).bind(documentId, artifactType, lang).first();
+  return Number(row?.max_version || 0) + 1;
+}
+
+async function latestAnalysisArtifact(env, documentId, artifactType = "brief", lang = "en") {
+  const row = await env.DB.prepare(`
+    SELECT *
+    FROM bp_ai_analysis_artifacts
+    WHERE document_id = ? AND artifact_type = ? AND lang = ? AND status = 'succeeded'
+    ORDER BY version DESC, updated_at DESC, id DESC
+    LIMIT 1
+  `).bind(documentId, artifactType, lang).first();
+  return normalizeAnalysisArtifact(row);
+}
+
+async function analysisArtifactById(env, artifactId) {
+  const row = await env.DB.prepare(`
+    SELECT *
+    FROM bp_ai_analysis_artifacts
+    WHERE id = ?
+  `).bind(artifactId).first();
+  return normalizeAnalysisArtifact(row);
+}
+
+function normalizeAnalysisArtifact(row) {
+  if (!row) return null;
+  return {
+    id: Number(row.id || 0),
+    document_id: Number(row.document_id || 0),
+    actor: row.actor || "",
+    artifact_type: row.artifact_type || "brief",
+    lang: row.lang || "en",
+    profile_id: row.profile_id === null || row.profile_id === undefined ? null : Number(row.profile_id),
+    version: Number(row.version || 1),
+    input_hash: row.input_hash || "",
+    prompt_version: row.prompt_version || "",
+    model: row.model || "",
+    status: row.status || "",
+    artifact: parseObjectField(row.artifact_json),
+    sources: parseJsonField(row.sources_json),
+    confidence: row.confidence_json ? parseObjectField(row.confidence_json) : null,
+    warnings: row.warnings_json ? parseJsonField(row.warnings_json) : [],
+    feedback: row.feedback_json ? parseObjectField(row.feedback_json) : null,
+    created_at: row.created_at || "",
+    updated_at: row.updated_at || "",
+  };
+}
+
 async function attachProjectCollaboration(projects, env, lang = "en", actor = "") {
   if (!projects.length) return;
   const map = await collaborationContextMap(projects.map((project) => project.document_id), env, lang);
@@ -5099,6 +5376,39 @@ async function ensureScoringTables(env) {
   `).run();
   await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_bp_score_drafts_actor_updated ON bp_score_drafts(actor, updated_at)").run();
   await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_bp_user_scores_actor_updated ON bp_user_scores(actor, updated_at)").run();
+}
+
+async function ensureAiAnalysisArtifactsTable(env) {
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS bp_ai_analysis_artifacts (
+      id INTEGER PRIMARY KEY,
+      document_id INTEGER NOT NULL,
+      actor TEXT NOT NULL DEFAULT '',
+      artifact_type TEXT NOT NULL DEFAULT 'brief',
+      lang TEXT NOT NULL DEFAULT 'en',
+      profile_id INTEGER,
+      version INTEGER NOT NULL DEFAULT 1,
+      input_hash TEXT NOT NULL DEFAULT '',
+      prompt_version TEXT NOT NULL DEFAULT '',
+      model TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'succeeded',
+      artifact_json TEXT NOT NULL DEFAULT '{}',
+      sources_json TEXT NOT NULL DEFAULT '[]',
+      confidence_json TEXT,
+      warnings_json TEXT,
+      feedback_json TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run();
+  await env.DB.prepare(`
+    CREATE INDEX IF NOT EXISTS idx_bp_ai_analysis_latest
+      ON bp_ai_analysis_artifacts(document_id, artifact_type, lang, status, updated_at)
+  `).run();
+  await env.DB.prepare(`
+    CREATE INDEX IF NOT EXISTS idx_bp_ai_analysis_actor_updated
+      ON bp_ai_analysis_artifacts(actor, updated_at)
+  `).run();
 }
 
 async function attachPersonalScoring(projects, actor, env, templateKey = "type_a") {

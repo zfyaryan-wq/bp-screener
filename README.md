@@ -63,6 +63,8 @@ Current hosted runtime behavior:
 - `STRICT_SCHEMA=true` is intended for migrated environments: the Worker checks whether transitional columns already exist and only blocks runtime DDL when a missing column would require an `ALTER TABLE`.
 - Project list visibility filters such as `hideDiscussed=true` and `hideNotInterested=true` are handled server-side before `LIMIT`; the frontend keeps its client-side filtering as an extra guard.
 
+AI Analysis Brief v1 is an optional project-detail feature. Reviewers generate it on demand for one BP at a time; the Worker uses existing D1 project fields and source chunks, asks the configured ModelBest-compatible LLM for grounded JSON, and stores the versioned brief in `bp_ai_analysis_artifacts`. It is not batch-generated, not a replacement for VRT Ask, and not a substitute for human scoring or diligence.
+
 ## Repository Layout
 
 ```text

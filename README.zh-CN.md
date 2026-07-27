@@ -63,6 +63,8 @@ LLM 通过 ModelBest LLM Center / DeepSeek V4 Flash 提供抽取、双语 profil
 - `STRICT_SCHEMA=true` 面向已完成迁移的环境：Worker 会先检查过渡期列是否已经存在，只有缺失列需要运行期 `ALTER TABLE` 时才会阻止请求。
 - 项目列表的 `hideDiscussed=true`、`hideNotInterested=true` 等可见性筛选已在 Worker 侧、`LIMIT` 前处理；前端保留客户端筛选作为二次兜底。
 
+AI 分析简报 v1 是项目详情里的可选功能。评审者每次只对一个 BP 手动点击生成；Worker 读取现有 D1 项目字段和原文 chunk，调用配置好的 ModelBest 兼容 LLM 产出有证据约束的 JSON，并把版本化简报存入 `bp_ai_analysis_artifacts`。它不会批量自动生成，不替代 VRT Ask，也不替代人工评分或尽调判断。
+
 ## 目录结构
 
 ```text
