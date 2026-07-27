@@ -50,7 +50,7 @@ flowchart LR
 
 线上生产前端是 Cloudflare Pages 静态站点，主要文件在 `web/index.html`、`web/app.js`、`web/styles.css`。后端 API 是 Cloudflare Worker，入口为 `web/_worker.js`，负责项目列表、筛选、推荐、评分草稿、协作、上传、wake 和 workbench 等接口。
 
-Cloudflare D1 是线上系统主数据源，保存项目档案、双语 profile、评分、评论、提名、浏览记录、BP 标记、个人访问码和 session 等数据。飞书主要作为 BP 原文件仓库；Bitable 可以辅助同步或人工维护，但结构化筛选数据和协作状态以 D1 为主。
+Cloudflare D1 是线上系统主数据源，保存项目档案、双语 profile、评分、评论、提名、浏览记录、BP 标记、基于 session 的协作记录和上传 ingest 任务。飞书主要作为 BP 原文件仓库；Bitable 可以辅助同步或人工维护，但结构化筛选数据和协作状态以 D1 为主。
 
 `bp_screener/` 和 `scripts/` 里的 Python 代码负责本地抽取、解析、翻译、飞书同步、D1 导出和运维同步任务。`app.py` 仍可作为本地/遗留 Streamlit workbench 使用，但不是生产主 UI。
 
@@ -274,10 +274,10 @@ python scripts\notion_sync.py sync --limit 10
 copy .dev.vars.example .dev.vars
 ```
 
-编辑 `.dev.vars`，设置 5 个成员各自的初始访问码：
+编辑 `.dev.vars`，设置本地 session secret：
 
 ```env
-BP_ACCESS_CODES={"Alzamora Quan":"replace-me","Gary Wang":"replace-me","brody":"replace-me","Luca Viscapi":"replace-me","Frank Zhang":"replace-me"}
+BP_SESSION_SECRET=replace-with-a-long-random-session-secret
 ```
 
 不要提交 `.dev.vars`，它已经被 Git 忽略。
@@ -313,20 +313,20 @@ python scripts\sync_to_d1.py --reset-schema --allow-drop --execute
 npx wrangler pages deploy web --project-name bp-screener
 ```
 
-创建 Cloudflare Pages 项目后，配置线上访问码：
+创建 Cloudflare Pages 项目后，配置线上 session secret：
 
 ```powershell
-npx wrangler pages secret put BP_ACCESS_CODES --project-name bp-screener
+npx wrangler pages secret put BP_SESSION_SECRET --project-name bp-screener
 ```
 
-登录采用 5 人个人访问码加 Worker session token 的极简方案。如果缺少 `BP_ACCESS_CODES` 且 D1 里也没有个人访问码，敏感 API 会返回明确配置错误，不会只信任 `x-bp-user`。静态页面可以加载，但项目数据、`/api/wake/*` 和 `/workbench` 仍受保护。
+登录采用 5 个固定团队成员加 Worker session token 的极简方案。生产环境必须配置强 `BP_SESSION_SECRET`，否则 session 创建会返回配置错误，不会静默使用弱默认值。`DEBUG_ERRORS=true` 只建议本地调试时开启，用于返回 500 detail；`STRICT_SCHEMA=true` 可在 D1 迁移稳定后阻止运行期 `ALTER TABLE`。
 
 你需要准备：
 
 - Cloudflare 账号
 - 通过 `npx wrangler login` 登录
 - 一个 D1 database ID，并填入 `wrangler.toml`
-- 5 个团队成员各自的访问码
+- 一个强 `BP_SESSION_SECRET` Pages secret
 - 可选：在 Cloudflare Pages 里配置自定义域名
 
 ## 当前限制
@@ -341,6 +341,6 @@ npx wrangler pages secret put BP_ACCESS_CODES --project-name bp-screener
 
 - 随着线上 API 增长，把 Worker 拆成更清晰的模块
 - 将批量 LLM 抽取、推荐和总结任务队列化
-- 增加评分、协作、访问码和管理操作的 audit log
+- 增加评分、协作、session 和管理操作的 audit log
 - 为线上 D1 项目库增加语义搜索能力
 - 持续完善飞书同步和可选 Bitable 人工维护流程

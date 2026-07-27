@@ -1,4 +1,9 @@
-BP_ACCESS_CODES={"Alzamora Quan":"replace-me","Gary Wang":"replace-me","brody":"replace-me","Luca Viscapi":"replace-me","Frank Zhang":"replace-me"}
+# Local preview may use a fallback session secret, but production must set BP_SESSION_SECRET.
+BP_SESSION_SECRET=replace-with-a-long-random-session-secret
+# Optional: return 500 details locally only.
+DEBUG_ERRORS=true
+# Optional: block opportunistic runtime ALTER TABLE calls after migrations are enforced.
+STRICT_SCHEMA=false
 WAKE_TOKEN=replace-with-local-wake-agent-token
 FEISHU_APP_ID=
 FEISHU_APP_SECRET=

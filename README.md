@@ -50,7 +50,7 @@ flowchart LR
 
 The production app is a Cloudflare Pages static site (`web/index.html`, `web/app.js`, `web/styles.css`) backed by a Cloudflare Worker API (`web/_worker.js`). The Worker serves project listing, filters, recommendations, score drafts, collaboration, upload, wake, and workbench endpoints.
 
-Cloudflare D1 is the primary online data source. It stores project records, bilingual profiles, scores, comments, nominations, views, BP marks, personal access codes, session records, and upload ingestion jobs. Feishu is mainly the original BP file archive; Bitable can assist with sync or manual maintenance, but collaboration state and structured screening data live in D1.
+Cloudflare D1 is the primary online data source. It stores project records, bilingual profiles, scores, comments, nominations, views, BP marks, session-backed collaboration records, and upload ingestion jobs. Feishu is mainly the original BP file archive; Bitable can assist with sync or manual maintenance, but collaboration state and structured screening data live in D1.
 
 The Python code in `bp_screener/` and `scripts/` is the local data pipeline for extraction, parsing, translation, Feishu sync, D1 export, and operational sync jobs. `app.py` remains a local/legacy Streamlit workbench, not the production UI.
 
@@ -274,10 +274,10 @@ Configure local preview credentials:
 copy .dev.vars.example .dev.vars
 ```
 
-Edit `.dev.vars` and set per-member bootstrap access codes:
+Edit `.dev.vars` and set a local session secret:
 
 ```env
-BP_ACCESS_CODES={"Alzamora Quan":"replace-me","Gary Wang":"replace-me","brody":"replace-me","Luca Viscapi":"replace-me","Frank Zhang":"replace-me"}
+BP_SESSION_SECRET=replace-with-a-long-random-session-secret
 ```
 
 Do not commit `.dev.vars`. It is ignored by Git.
@@ -324,20 +324,20 @@ Deploy the Pages site:
 npx wrangler pages deploy web --project-name bp-screener
 ```
 
-After creating the Cloudflare Pages project, add the production access-code configuration:
+After creating the Cloudflare Pages project, add the production session secret:
 
 ```powershell
-npx wrangler pages secret put BP_ACCESS_CODES --project-name bp-screener
+npx wrangler pages secret put BP_SESSION_SECRET --project-name bp-screener
 ```
 
-Login uses per-member access codes and Worker-issued session tokens. If `BP_ACCESS_CODES` and personal D1 access codes are missing, sensitive API requests return an explicit configuration error instead of trusting `x-bp-user`. The static page can load, but project data, `/api/wake/*`, and `/workbench` remain protected.
+Login uses the five configured team members and Worker-issued session tokens. Production must set a strong `BP_SESSION_SECRET`; otherwise session creation fails with a configuration error instead of silently signing with a weak default. `DEBUG_ERRORS=true` can expose 500 details during local debugging, and `STRICT_SCHEMA=true` blocks opportunistic runtime `ALTER TABLE` calls once D1 migrations are enforced.
 
 You need to provide:
 
 - A Cloudflare account
 - Wrangler login via `npx wrangler login`
 - A D1 database ID for `wrangler.toml`
-- Per-member access codes for the five team users
+- A strong `BP_SESSION_SECRET` Pages secret
 - Optional custom domain configuration in Cloudflare Pages
 
 ## Current Limitations
@@ -352,6 +352,6 @@ You need to provide:
 
 - Split the Worker into smaller API modules as the web surface grows
 - Queue bulk LLM extraction, recommendations, and summary jobs
-- Add audit logs for scoring, collaboration, access-code, and admin changes
+- Add audit logs for scoring, collaboration, session, and admin changes
 - Add online semantic search for the hosted D1-backed project library
 - Keep improving Feishu sync and optional Bitable maintenance workflows

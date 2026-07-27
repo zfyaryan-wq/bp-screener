@@ -105,8 +105,6 @@ const labels = {
     switchUserAria: "Switch current user",
     switchUserCurrent: "Current user",
     switchUserConfirm: "Switching will make future actions operate as {name}. Continue?",
-    switchAccessCodeLabel: "Access code is no longer required",
-    switchAccessCodeHint: "Choose a team member and confirm to switch.",
     confirmSwitchUser: "Confirm switch",
     cancelSwitchUser: "Cancel",
     closeUserSwitch: "Close user switcher",
@@ -283,22 +281,7 @@ const labels = {
     editProfile: "Edit",
     generatedByAi: "VRT Agent generated factors are ready. Review, edit the title, then save or apply.",
     profileSaved: "Profile saved.",
-    accessCodePlaceholder: "No access code required",
-    accessCodeHint: "Choose your name and select Enter to continue.",
-    accessCodeRequired: "No access code is required. Please choose a valid team member.",
     invalidAccessCode: "Unable to verify this team member.",
-    accountAccessTitle: "Personal access code",
-    accountAccessHint: "Each member's second confirmation code for switching identity and protecting personal actions.",
-    oldAccessCodeLabel: "Current code",
-    oldAccessCodePlaceholder: "Only needed when changing an existing code",
-    newAccessCodeLabel: "New code",
-    newAccessCodePlaceholder: "At least 4 characters",
-    confirmNewAccessCodeLabel: "Confirm new code",
-    confirmNewAccessCodePlaceholder: "Repeat new code",
-    saveAccessCode: "Save access code",
-    accessCodeMismatch: "The new codes do not match.",
-    accessCodeTooShort: "Use at least 4 characters.",
-    accessCodeSaved: "Personal access code saved.",
     rightContext: "BP Context",
     selectProjectHint: "Select a project to review the BP and team context here.",
     bpPreview: "BP Preview",
@@ -491,8 +474,6 @@ const labels = {
     switchUserAria: "切换当前用户",
     switchUserCurrent: "当前用户",
     switchUserConfirm: "切换后将以 {name} 身份操作，继续？",
-    switchAccessCodeLabel: "不再需要访问码",
-    switchAccessCodeHint: "选择团队成员并确认即可切换。",
     confirmSwitchUser: "确认切换",
     cancelSwitchUser: "取消",
     closeUserSwitch: "关闭用户切换",
@@ -669,22 +650,7 @@ const labels = {
     editProfile: "编辑",
     generatedByAi: "VRT Agent 已生成因素。请检查后保存或直接应用。",
     profileSaved: "方案已保存。",
-    accessCodePlaceholder: "不需要访问码",
-    accessCodeHint: "选择你的名字并点击进入即可继续。",
-    accessCodeRequired: "不需要访问码，请选择有效的小组成员。",
     invalidAccessCode: "无法验证该团队成员。",
-    accountAccessTitle: "个人访问码",
-    accountAccessHint: "每个成员自己的二次确认码，用于切换身份/保护个人操作。",
-    oldAccessCodeLabel: "当前访问码",
-    oldAccessCodePlaceholder: "已有访问码时才需要填写",
-    newAccessCodeLabel: "新访问码",
-    newAccessCodePlaceholder: "至少 4 个字符",
-    confirmNewAccessCodeLabel: "确认新访问码",
-    confirmNewAccessCodePlaceholder: "再次输入新访问码",
-    saveAccessCode: "保存访问码",
-    accessCodeMismatch: "两次输入的新访问码不一致。",
-    accessCodeTooShort: "至少输入 4 个字符。",
-    accessCodeSaved: "个人访问码已保存。",
     rightContext: "BP 上下文",
     selectProjectHint: "选择一个项目后，在这里查看 BP、评论和团队状态。",
     bpPreview: "BP 预览",
@@ -780,12 +746,10 @@ migrateAuthState();
 let lang = localStorage.getItem("bp-screener-lang") || "en";
 let storedLoginUser = localStorage.getItem("bp-screener-user") || "";
 let currentUser = "";
-let accessCode = "";
 let sessionToken = sessionStorage.getItem("bp-screener-session-token") || "";
 let hasUserConfirmedEntry = false;
 let lastAuthError = "";
 let lastAuthStatus = 0;
-localStorage.removeItem("bp-screener-access-code");
 let projects = [];
 let projectListRequestSeq = 0;
 let projectListState = { phase: "idle", message: "", error: "" };
@@ -822,7 +786,6 @@ let highlightOnlyProjects = localStorage.getItem("bp-highlight-only-projects") =
 let hiddenOnlyProjects = localStorage.getItem("bp-hidden-only-projects") === "true";
 let visibilityFilterValue = localStorage.getItem("bp-visibility-filter") || visibilityFilterValueFromState();
 applyVisibilityFilterValue(visibilityFilterValue, { persist: false });
-let accountAccessCodeStatus = {};
 let activeScoringTemplate = normalizeScoringTemplateKey(localStorage.getItem("bp-scoring-template"));
 const userTimezone = resolveUserTimezone();
 const DEFAULT_FACTOR_WEIGHTS = [40, 25, 18, 11, 6];
@@ -972,7 +935,6 @@ const loginOverlay = document.querySelector("#loginOverlay");
 const loginForm = document.querySelector("#loginForm");
 const loginHint = document.querySelector("[data-i18n='loginHint']");
 const userSelect = document.querySelector("#userSelect");
-const accessCodeInput = document.querySelector("#accessCode");
 const loginError = document.querySelector("#loginError");
 const loginSubmitButton = loginForm?.querySelector("button[type='submit']");
 const welcomeMessage = document.querySelector("#welcomeMessage");
@@ -984,14 +946,8 @@ const userSwitchDialog = document.querySelector("#userSwitchDialog");
 const userSwitchList = document.querySelector("#userSwitchList");
 const userSwitchConfirm = document.querySelector("#userSwitchConfirm");
 const userSwitchConfirmText = document.querySelector("#userSwitchConfirmText");
-const switchAccessCodeInput = document.querySelector("#switchAccessCode");
 const confirmUserSwitchButton = document.querySelector("#confirmUserSwitch");
 const cancelUserSwitchButton = document.querySelector("#cancelUserSwitch");
-const oldAccessCodeInput = document.querySelector("#oldAccessCode");
-const newAccessCodeInput = document.querySelector("#newAccessCode");
-const confirmNewAccessCodeInput = document.querySelector("#confirmNewAccessCode");
-const saveAccessCodeButton = document.querySelector("#saveAccessCode");
-const accountAccessStatus = document.querySelector("#accountAccessStatus");
 const uploadOpenButton = document.querySelector("#uploadOpenButton");
 const uploadCloseButton = document.querySelector("#uploadCloseButton");
 const uploadOverlay = document.querySelector("#uploadOverlay");
@@ -1195,7 +1151,6 @@ currentUserBadge?.addEventListener("click", openUserSwitchDialog);
 document.querySelector("#closeUserSwitch")?.addEventListener("click", closeUserSwitchDialog);
 cancelUserSwitchButton?.addEventListener("click", clearPendingUserSwitch);
 confirmUserSwitchButton?.addEventListener("click", confirmUserSwitch);
-saveAccessCodeButton?.addEventListener("click", savePersonalAccessCode);
 userSwitchDialog?.addEventListener("click", (event) => {
   if (event.target === userSwitchDialog) closeUserSwitchDialog();
 });
@@ -1218,11 +1173,9 @@ loginForm.addEventListener("submit", async (event) => {
   }
   currentUser = selectedUser;
   storedLoginUser = selectedUser;
-  accessCode = "";
   sessionToken = nextSessionToken;
   localStorage.setItem("bp-screener-user", currentUser);
   sessionStorage.setItem("bp-screener-session-token", sessionToken);
-  localStorage.removeItem("bp-screener-access-code");
   loginError.textContent = "";
   hasUserConfirmedEntry = true;
   renderWelcome();
@@ -1233,7 +1186,6 @@ loginForm.addEventListener("submit", async (event) => {
 applyLanguage();
 setLeftRailView("workspace");
 bootstrapWorkspace();
-window.setTimeout(loadAccessCodeStatus, 0);
 
 function t(key) {
   return labels[lang][key] || key;
@@ -1456,9 +1408,7 @@ function loadNonCriticalWorkspaceData() {
 function clearSessionOnly() {
   hasUserConfirmedEntry = false;
   sessionToken = "";
-  accessCode = "";
   sessionStorage.removeItem("bp-screener-session-token");
-  localStorage.removeItem("bp-screener-access-code");
 }
 
 function migrateAuthState() {
@@ -1466,14 +1416,6 @@ function migrateAuthState() {
   sessionStorage.removeItem("bp-screener-session-token");
   localStorage.removeItem("bp-screener-access-code");
   localStorage.setItem(AUTH_STATE_VERSION_KEY, AUTH_STATE_VERSION);
-}
-
-async function loadAccessCodeStatus() {
-  const response = await fetch("/api/account/access-code/status").catch(() => null);
-  if (!response?.ok) return;
-  const data = await response.json().catch(() => ({}));
-  accountAccessCodeStatus = data.members || {};
-  renderLoginPrompt();
 }
 
 function canUseStoredSessionFor(user) {
@@ -1514,54 +1456,6 @@ function triggerAuthError(container, input) {
   input?.focus();
 }
 
-async function savePersonalAccessCode() {
-  if (!currentUser || !teamMembers.includes(currentUser)) return;
-  const oldCode = oldAccessCodeInput?.value.trim() || "";
-  const newCode = newAccessCodeInput?.value.trim() || "";
-  const confirmCode = confirmNewAccessCodeInput?.value.trim() || "";
-  if (newCode.length < 4) {
-    setAccountAccessStatus(t("accessCodeTooShort"), "error");
-    triggerAuthError(newAccessCodeInput, newAccessCodeInput);
-    return;
-  }
-  if (newCode !== confirmCode) {
-    setAccountAccessStatus(t("accessCodeMismatch"), "error");
-    triggerAuthError(confirmNewAccessCodeInput, confirmNewAccessCodeInput);
-    return;
-  }
-  const response = await fetch("/api/account/access-code", {
-    method: "POST",
-    headers: {
-      ...authHeaders(),
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({ old_code: oldCode, new_code: newCode }),
-  }).catch(() => null);
-  if (!response?.ok) {
-    const data = await response?.json().catch(() => ({}));
-    setAccountAccessStatus(data?.error || t("invalidAccessCode"), "error");
-    triggerAuthError(oldAccessCodeInput, oldAccessCodeInput);
-    return;
-  }
-  const data = await response.json().catch(() => ({}));
-  accessCode = "";
-  sessionToken = data.session_token || sessionToken;
-  if (sessionToken) sessionStorage.setItem("bp-screener-session-token", sessionToken);
-  localStorage.removeItem("bp-screener-access-code");
-  accountAccessCodeStatus[currentUser] = true;
-  [oldAccessCodeInput, newAccessCodeInput, confirmNewAccessCodeInput].forEach((input) => {
-    if (input) input.value = "";
-  });
-  setAccountAccessStatus(t("accessCodeSaved"), "success");
-  await loadAccessCodeStatus();
-}
-
-function setAccountAccessStatus(message, type = "") {
-  if (!accountAccessStatus) return;
-  accountAccessStatus.textContent = message || "";
-  accountAccessStatus.classList.toggle("success", type === "success");
-  accountAccessStatus.classList.toggle("error", type === "error");
-}
 
 function renderLoginMemberAvatars() {
   const selected = teamMembers.includes(userSelect.value) ? userSelect.value : currentUser || storedLoginUser || teamUserMeta[0].name;
@@ -1612,7 +1506,6 @@ function openUserSwitchDialog() {
   pendingSwitchUser = "";
   renderUserSwitchList();
   clearPendingUserSwitch();
-  setAccountAccessStatus("", "");
   userSwitchDialog.showModal();
 }
 
@@ -1654,9 +1547,6 @@ function selectSwitchUser(name) {
   if (userSwitchConfirmText) {
     userSwitchConfirmText.textContent = t("switchUserConfirm").replace("{name}", userDisplayName(name));
   }
-  if (switchAccessCodeInput) {
-    switchAccessCodeInput.value = "";
-  }
   confirmUserSwitchButton?.focus();
   userSwitchList?.querySelectorAll("[data-switch-user]").forEach((button) => {
     button.classList.toggle("selected", button.dataset.switchUser === name);
@@ -1667,7 +1557,6 @@ function clearPendingUserSwitch() {
   pendingSwitchUser = "";
   if (userSwitchConfirm) userSwitchConfirm.hidden = true;
   if (userSwitchConfirmText) userSwitchConfirmText.textContent = "";
-  if (switchAccessCodeInput) switchAccessCodeInput.value = "";
   userSwitchList?.querySelectorAll("[data-switch-user]").forEach((button) => button.classList.remove("selected"));
 }
 
@@ -1680,14 +1569,11 @@ async function confirmUserSwitch() {
   if (!nextSessionToken) return;
   currentUser = pendingSwitchUser;
   storedLoginUser = pendingSwitchUser;
-  accessCode = "";
   sessionToken = nextSessionToken;
   hasUserConfirmedEntry = true;
   localStorage.setItem("bp-screener-user", currentUser);
   sessionStorage.setItem("bp-screener-session-token", sessionToken);
-  localStorage.removeItem("bp-screener-access-code");
   if (userSelect) userSelect.value = currentUser;
-  if (accessCodeInput) accessCodeInput.value = "";
   renderLoginMemberAvatars();
   renderWelcome();
   closeUserSwitchDialog();
@@ -5289,9 +5175,7 @@ async function apiFetch(url, options = {}) {
     sessionStorage.removeItem("bp-screener-session-token");
     hasUserConfirmedEntry = false;
     currentUser = "";
-    accessCode = "";
     sessionToken = "";
-    if (accessCodeInput) accessCodeInput.value = "";
     loginOverlay.classList.remove("hidden");
     loginError.textContent = errorPayload.error || t("invalidAccessCode");
     triggerAuthError(loginForm, userSelect);

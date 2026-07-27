@@ -4,7 +4,7 @@ BP Screener is sized for a five-person review team. Keep the system simple: Clou
 
 ## Production Data Rules
 
-- D1 is the source of truth for projects, review state, scores, shortlist, nominations, comments, and access-code metadata.
+- D1 is the source of truth for projects, review state, scores, shortlist, nominations, comments, and session-backed collaboration state.
 - Feishu stores uploaded source files. Do not treat Feishu Bitable or Drive metadata as the primary application database.
 - Online BP upload writes `documents(status='uploaded')` and one `ingest_jobs(status='queued')` row in D1. Workers and local agents should consume `ingest_jobs` instead of inferring pending work from `documents` alone.
 - `scripts/sync_to_d1.py` defaults to data-only `INSERT OR REPLACE` SQL. Do not run destructive schema resets in production.
@@ -19,13 +19,12 @@ Recommended order for a new or partially migrated D1 database:
 1. `cloudflare/schema.sql`: baseline application schema for documents, projects, chunks, scoring templates, and search tables.
 2. `cloudflare/migrate_document_upload_sources.sql`: adds upload source/status columns used by the hosted upload flow.
 3. `cloudflare/migrate_ingest_jobs.sql`: adds the durable ingestion queue consumed by local/background operators.
-4. `cloudflare/migrate_account_access_codes.sql`: stores per-actor access-code hashes for simple team auth.
-5. `cloudflare/migrate_review_ops.sql`: adds project status, marks, votes, shortlist, nominations, meetings, and daily activity.
-6. `cloudflare/migrate_bp_collaboration.sql`: adds comments, activity, and reactions for BP review collaboration.
-7. `cloudflare/migrate_weight_factors.sql`: adds reusable public/personal factor definitions.
-8. `cloudflare/migrate_weight_profiles.sql`: adds weight profiles, likes, comments, and profile events.
-9. `cloudflare/migrate_bp_scoring.sql`: adds AI drafts and user final scores; run after weight profiles because it references `weight_profiles`.
-10. `cloudflare/migrate_project_translations.sql`: adds generated per-language project profiles.
+4. `cloudflare/migrate_review_ops.sql`: adds project status, marks, votes, shortlist, nominations, meetings, and daily activity.
+5. `cloudflare/migrate_bp_collaboration.sql`: adds comments, activity, and reactions for BP review collaboration.
+6. `cloudflare/migrate_weight_factors.sql`: adds reusable public/personal factor definitions.
+7. `cloudflare/migrate_weight_profiles.sql`: adds weight profiles, likes, comments, and profile events.
+8. `cloudflare/migrate_bp_scoring.sql`: adds AI drafts and user final scores; run after weight profiles because it references `weight_profiles`.
+9. `cloudflare/migrate_project_translations.sql`: adds generated per-language project profiles.
 
 Run each migration once, then verify key tables or columns before moving to the next file:
 
@@ -37,10 +36,15 @@ For existing databases, inspect the current schema first and skip migrations alr
 
 ## Auth Rules
 
-- The web app uses the five known team members plus a personal access code or short session token.
-- Configure initial access through `BP_ACCESS_CODES` in Cloudflare secrets, or intentionally enable `BP_ALLOW_ACCESS_CODE_BOOTSTRAP=true` for a controlled bootstrap window.
-- Do not add Feishu OAuth unless the team outgrows this simple access-code model.
+- The web app uses the five known team members plus a short Worker-issued session token. Users enter by selecting their team member name; no access code is required.
+- Production must configure a strong `BP_SESSION_SECRET` in Cloudflare Pages secrets. Missing or weak production secrets should fail session creation instead of falling back to a default.
+- Keep `DEBUG_ERRORS=true` limited to local/debug environments. Production 500 responses should not expose exception details.
+- Do not add Feishu OAuth unless the team outgrows this simple name-plus-session model.
 - `/api/wake/*` and `/workbench` are protected by the same team session.
+
+## Runtime Schema Policy
+
+Existing `ensure*` helpers remain in the Worker for now to avoid a risky all-at-once migration change. Treat them as a transitional guardrail: append-only D1 migrations are still the production source of schema changes, and `STRICT_SCHEMA=true` can be enabled after migrations are verified to block opportunistic runtime `ALTER TABLE` calls.
 
 ## Product Boundaries
 

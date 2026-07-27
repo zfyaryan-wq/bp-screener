@@ -3,7 +3,7 @@ export default {
     try {
     const url = new URL(request.url);
     if (url.pathname === "/api/account/access-code/status") {
-      return await accountAccessCodeStatus(env);
+      return disabledAccessCodeResponse();
     }
     if (url.pathname === "/api/account/me") {
       const auth = await authenticateRequest(request, env);
@@ -15,7 +15,7 @@ export default {
       );
     }
     if (url.pathname === "/api/account/access-code") {
-      return await accountAccessCodeAction(request, env);
+      return disabledAccessCodeResponse();
     }
     if (url.pathname === "/api/upload") {
       const auth = await authorizeApi(request, env);
@@ -182,7 +182,7 @@ export default {
     }
     return await serveAsset(request, env);
     } catch (error) {
-      return json({ error: "Internal server error.", detail: String(error?.message || error || "").slice(0, 300) }, 500);
+      return internalErrorResponse(error, env);
     }
   },
 };
@@ -339,6 +339,7 @@ async function proxyWorkbench(request, env) {
 }
 
 const SESSION_TTL_SECONDS = 8 * 60 * 60;
+const DEFAULT_SESSION_SECRET = "bp-screener-team-session-v1";
 
 async function authorizeApi(request, env) {
   const auth = await authenticateRequest(request, env);
@@ -365,44 +366,8 @@ async function authenticateRequest(request, env) {
   return { user: requestedUser, sessionToken: await createSessionToken(requestedUser, teamSessionSecret(requestedUser, env)) };
 }
 
-async function accountAccessCodeStatus(env) {
-  const members = Object.fromEntries(TEAM_MEMBERS.map((member) => [member, false]));
-  return json({ members });
-}
-
-async function accountAccessCodeAction(request, env) {
-  if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
+function disabledAccessCodeResponse() {
   return json({ error: "Personal access codes are disabled." }, 410);
-}
-
-async function ensureAccountAccessCodeTable(env) {
-  await env.DB.prepare(`
-    CREATE TABLE IF NOT EXISTS account_access_codes (
-      actor TEXT PRIMARY KEY,
-      salt TEXT NOT NULL,
-      code_hash TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )
-  `).run();
-}
-
-async function getStoredAccessCode(actor, env) {
-  if (!env.DB) return null;
-  await ensureAccountAccessCodeTable(env);
-  return await env.DB.prepare("SELECT actor, salt, code_hash FROM account_access_codes WHERE actor = ?").bind(actor).first();
-}
-
-async function verifyStoredAccessCode(actor, code, storedCode) {
-  if (!storedCode || !code) return false;
-  const candidateHash = await hashAccessCode(actor, storedCode.salt, code);
-  return timingSafeEqual(candidateHash, storedCode.code_hash);
-}
-
-async function hashAccessCode(actor, salt, code) {
-  const data = new TextEncoder().encode(`${actor}:${salt}:${code}`);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return bytesToHex(new Uint8Array(digest));
 }
 
 function randomHex(byteLength) {
@@ -432,16 +397,31 @@ function sessionCookieHeaders(token) {
   };
 }
 
-function sessionSecretsFor(user, expectedCode, storedCode) {
-  return [expectedCode, storedCode?.code_hash].filter(Boolean).map((secret) => `${user}:${secret}`);
-}
-
 function teamSessionSecret(user, env) {
-  return `${user}:${env.BP_SESSION_SECRET || env.BP_AUTH_SECRET || "bp-screener-team-session-v1"}`;
+  const configured = String(env.BP_SESSION_SECRET || env.BP_AUTH_SECRET || "");
+  const secret = configured || DEFAULT_SESSION_SECRET;
+  if (isWeakSessionSecret(secret)) {
+    const message = "BP_SESSION_SECRET must be configured to a strong value for production.";
+    if (requiresStrongSessionSecret(env)) {
+      throw new Error(message);
+    }
+    console.warn(`${message} Using a local-development fallback.`);
+  }
+  return `${user}:${secret}`;
 }
 
 function teamSessionSecretsFor(user, env) {
   return [teamSessionSecret(user, env)];
+}
+
+function isWeakSessionSecret(secret) {
+  return !secret || secret === DEFAULT_SESSION_SECRET || secret.length < 24;
+}
+
+function requiresStrongSessionSecret(env) {
+  const environment = String(env.ENVIRONMENT || env.NODE_ENV || "").toLowerCase();
+  const pagesBranch = String(env.CF_PAGES_BRANCH || "").toLowerCase();
+  return envFlag(env.BP_REQUIRE_SESSION_SECRET) || environment === "production" || (env.CF_PAGES && pagesBranch === "main");
 }
 
 async function userFromSessionToken(token, env) {
@@ -468,7 +448,7 @@ async function verifySessionToken(user, token, secrets) {
   if (parts.length !== 3 || parts[0] !== "v1" || !secrets.length) return { ok: false };
   const [, encodedPayload, signature] = parts;
   for (const secret of secrets) {
-    const expected = await hmacSha256(secret, encodedPayload);
+    const expected = await hmacSha256(`${user}:${secret}`, encodedPayload);
     if (!timingSafeEqual(signature, expected)) continue;
     const payload = safeJsonParse(base64UrlDecode(encodedPayload));
     if (payload?.sub !== user) return { ok: false };
@@ -892,6 +872,11 @@ async function ensureIngestJobsTable(env) {
 }
 
 async function addColumnIfMissing(env, tableName, columnName, definition) {
+  // Transitional runtime DDL: keep existing ensure* calls for availability, but
+  // allow production to block opportunistic ALTERs once migrations are enforced.
+  if (envFlag(env.STRICT_SCHEMA)) {
+    throw new Error(`Runtime schema change blocked by STRICT_SCHEMA: ${tableName}.${columnName}`);
+  }
   try {
     await env.DB.prepare(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`).run();
   } catch (error) {
@@ -5574,4 +5559,16 @@ function json(data, status = 200, extraHeaders = {}) {
       ...extraHeaders,
     },
   });
+}
+
+function internalErrorResponse(error, env) {
+  const payload = { error: "Internal server error." };
+  if (envFlag(env.DEBUG_ERRORS)) {
+    payload.detail = String(error?.message || error || "").slice(0, 300);
+  }
+  return json(payload, 500);
+}
+
+function envFlag(value) {
+  return /^(1|true|yes|on)$/i.test(String(value || "").trim());
 }
