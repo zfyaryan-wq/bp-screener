@@ -56,13 +56,20 @@ The Python code in `bp_screener/` and `scripts/` is the local data pipeline for 
 
 LLM features call ModelBest LLM Center / DeepSeek V4 Flash for extraction, bilingual profiles, recommendations, draft scores, and summaries. Human reviewers make the final screening and scoring decisions.
 
+Current hosted runtime behavior:
+
+- Uploads go through the Worker to Feishu Drive, then D1 records `documents(status='uploaded')` plus `ingest_jobs(status='queued')` as the durable handoff to the local Python ingest operator.
+- `scripts/process_ingest_jobs.py` can recover stale `processing` jobs and reconcile uploaded documents that are missing ingest jobs, with dry-run output by default and `--apply` required for D1 mutations.
+- `STRICT_SCHEMA=true` is intended for migrated environments: the Worker checks whether transitional columns already exist and only blocks runtime DDL when a missing column would require an `ALTER TABLE`.
+- Project list visibility filters such as `hideDiscussed=true` and `hideNotInterested=true` are handled server-side before `LIMIT`; the frontend keeps its client-side filtering as an extra guard.
+
 ## Repository Layout
 
 ```text
 bp-screener/
   app.py                    # Legacy/local Streamlit app
   web/                      # Cloudflare Pages frontend and Worker
-  cloudflare/schema.sql     # D1 schema
+  cloudflare/schema.sql     # Destructive empty-D1 baseline; not a production migration
   bp_screener/
     config.py               # Runtime configuration
     db.py                   # SQLite schema and persistence helpers
@@ -263,7 +270,7 @@ This repository includes the production Cloudflare web layer for VRT BP Screener
 
 - `web/index.html`, `web/app.js`, `web/styles.css`: Cloudflare Pages static frontend
 - `web/_worker.js`: Worker API for project data, filters, recommendations, score drafts, collaboration, uploads, wake, workbench, session auth, and static assets
-- `cloudflare/schema.sql`: D1 schema for the primary online database
+- `cloudflare/schema.sql`: destructive empty-database D1 baseline; do not run it as a production migration
 - `scripts/sync_to_d1.py`: export local pipeline results into D1 import SQL
 - `wrangler.toml`: Pages + D1 binding template
 - `docs/architecture-runbook.md`: production data and operational guardrails
@@ -294,6 +301,8 @@ Copy the returned `database_id` into `wrangler.toml`, then initialize the databa
 npx wrangler d1 execute bp-screener --remote --file cloudflare/schema.sql
 ```
 
+`cloudflare/schema.sql` starts with `DROP TABLE IF EXISTS` statements and is only for brand-new empty or disposable D1 databases. For production or any database with data, apply the non-destructive `cloudflare/migrate_*.sql` files that are still missing instead of replaying the baseline.
+
 After local ingestion has produced `data/bp_screener.sqlite`, export data-only upserts for D1:
 
 ```powershell
@@ -311,6 +320,17 @@ npx wrangler d1 execute bp-screener --remote --file cloudflare\migrate_ingest_jo
 ```
 
 The first version records a durable `ingest_jobs(status='queued')` handoff after `/api/upload`. A local or background worker can claim jobs and then connect Feishu download, `bp_screener.ingest`, and `scripts\sync_to_d1.py` upsert steps. The script is read-only/dry-run unless `--apply` is passed.
+
+If a worker or local process exits while a job is `processing`, `claim` and `process-one` automatically dry-run requeue jobs older than `INGEST_STALE_PROCESSING_MINUTES` / `--stale-minutes` before claiming. To run recovery or upload/job reconciliation explicitly:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\process_ingest_jobs.py recover-stale --stale-minutes 60
+.\.venv\Scripts\python.exe scripts\process_ingest_jobs.py recover-stale --stale-minutes 60 --apply
+.\.venv\Scripts\python.exe scripts\process_ingest_jobs.py reconcile-uploads
+.\.venv\Scripts\python.exe scripts\process_ingest_jobs.py reconcile-uploads --apply
+```
+
+`reconcile-uploads` only creates missing `ingest_jobs` for `documents(status='uploaded')` that have no job; it does not delete documents or reset existing jobs.
 
 Treat D1 as the source of truth for the hosted system. `scripts/sync_to_d1.py` does not run destructive reset commands by default; production DROP/reset operations require explicit authorization. A full schema reset requires both `--reset-schema` and `--allow-drop`, for example only in a disposable environment:
 
@@ -331,6 +351,14 @@ npx wrangler pages secret put BP_SESSION_SECRET --project-name bp-screener
 ```
 
 Login uses the five configured team members and Worker-issued session tokens. Production must set a strong `BP_SESSION_SECRET`; otherwise session creation fails with a configuration error instead of silently signing with a weak default. `DEBUG_ERRORS=true` can expose 500 details during local debugging, and `STRICT_SCHEMA=true` blocks opportunistic runtime `ALTER TABLE` calls once D1 migrations are enforced.
+
+For CI-style local verification before pushing web/ingest changes:
+
+```powershell
+node --check web\_worker.js
+python -m py_compile scripts\process_ingest_jobs.py
+python -m pytest tests\test_process_ingest_jobs.py
+```
 
 You need to provide:
 

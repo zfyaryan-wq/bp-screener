@@ -7,6 +7,7 @@ BP Screener is sized for a five-person review team. Keep the system simple: Clou
 - D1 is the source of truth for projects, review state, scores, shortlist, nominations, comments, and session-backed collaboration state.
 - Feishu stores uploaded source files. Do not treat Feishu Bitable or Drive metadata as the primary application database.
 - Online BP upload writes `documents(status='uploaded')` and one `ingest_jobs(status='queued')` row in D1. Workers and local agents should consume `ingest_jobs` instead of inferring pending work from `documents` alone.
+- `cloudflare/schema.sql` is a destructive empty-database baseline: it starts with `DROP TABLE IF EXISTS` and must not be replayed against production data.
 - `scripts/sync_to_d1.py` defaults to data-only `INSERT OR REPLACE` SQL. Do not run destructive schema resets in production.
 - Only run `python scripts\sync_to_d1.py --reset-schema --allow-drop --execute` against disposable or explicitly approved environments.
 
@@ -16,7 +17,7 @@ Use append-only migrations for production D1. Never run destructive schema reset
 
 Recommended order for a new or partially migrated D1 database:
 
-1. `cloudflare/schema.sql`: baseline application schema for documents, projects, chunks, scoring templates, and search tables.
+1. `cloudflare/schema.sql`: destructive baseline application schema for a brand-new empty database only.
 2. `cloudflare/migrate_document_upload_sources.sql`: adds upload source/status columns used by the hosted upload flow.
 3. `cloudflare/migrate_ingest_jobs.sql`: adds the durable ingestion queue consumed by local/background operators.
 4. `cloudflare/migrate_review_ops.sql`: adds project status, marks, votes, shortlist, nominations, meetings, and daily activity.
@@ -26,13 +27,13 @@ Recommended order for a new or partially migrated D1 database:
 8. `cloudflare/migrate_bp_scoring.sql`: adds AI drafts and user final scores; run after weight profiles because it references `weight_profiles`.
 9. `cloudflare/migrate_project_translations.sql`: adds generated per-language project profiles.
 
-Run each migration once, then verify key tables or columns before moving to the next file:
+Run each migration once, then verify key tables or columns before moving to the next file. For existing databases, inspect the current schema and apply only missing non-destructive migrations:
 
 ```powershell
 npx wrangler d1 execute bp-screener --remote --file cloudflare\migrate_ingest_jobs.sql
 ```
 
-For existing databases, inspect the current schema first and skip migrations already applied. If an `ALTER TABLE ADD COLUMN` migration has already run, do not re-run it blindly; create a small follow-up migration instead.
+If an `ALTER TABLE ADD COLUMN` migration has already run, do not re-run it blindly; create a small follow-up migration instead. Never use `cloudflare/schema.sql` as a production migration because it drops existing tables before recreating them.
 
 ## Auth Rules
 
@@ -44,7 +45,11 @@ For existing databases, inspect the current schema first and skip migrations alr
 
 ## Runtime Schema Policy
 
-Existing `ensure*` helpers remain in the Worker for now to avoid a risky all-at-once migration change. Treat them as a transitional guardrail: append-only D1 migrations are still the production source of schema changes, and `STRICT_SCHEMA=true` can be enabled after migrations are verified to block opportunistic runtime `ALTER TABLE` calls.
+Existing `ensure*` helpers remain in the Worker for now to avoid a risky all-at-once migration change. Treat them as a transitional guardrail: append-only D1 migrations are still the production source of schema changes, and `STRICT_SCHEMA=true` can be enabled after migrations are verified to block opportunistic runtime `ALTER TABLE` calls. In strict mode, the Worker first checks whether the expected column already exists; it only errors when serving the request would require runtime DDL for a missing column.
+
+## Worker List Filtering
+
+Visibility filters that affect result set size must be applied in D1 before `LIMIT`. `hideDiscussed=true` excludes global `discussed` / `meeting_selected` rows, and `hideNotInterested=true` excludes the current actor's not-interested marks or activity. The frontend may keep equivalent filtering as a secondary guard, but the Worker query owns pagination correctness.
 
 ## Product Boundaries
 
@@ -102,12 +107,18 @@ npx wrangler d1 execute bp-screener --remote --file cloudflare\migrate_ingest_jo
 .\.venv\Scripts\python.exe scripts\process_ingest_jobs.py list --status queued --limit 20
 .\.venv\Scripts\python.exe scripts\process_ingest_jobs.py claim --limit 1
 .\.venv\Scripts\python.exe scripts\process_ingest_jobs.py claim --limit 1 --apply
+.\.venv\Scripts\python.exe scripts\process_ingest_jobs.py recover-stale --stale-minutes 60
+.\.venv\Scripts\python.exe scripts\process_ingest_jobs.py recover-stale --stale-minutes 60 --apply
+.\.venv\Scripts\python.exe scripts\process_ingest_jobs.py reconcile-uploads
+.\.venv\Scripts\python.exe scripts\process_ingest_jobs.py reconcile-uploads --apply
 .\.venv\Scripts\python.exe scripts\process_ingest_jobs.py process-one
 .\.venv\Scripts\python.exe scripts\process_ingest_jobs.py process-one --apply
 .\.venv\Scripts\python.exe scripts\process_ingest_jobs.py process-one --apply --no-llm
 ```
 
 `process-one --apply` needs Feishu app credentials in `.env` (`FEISHU_APP_ID`, `FEISHU_APP_SECRET`) and Wrangler access to the target D1 database (`CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, and the configured database name or local Wrangler auth). The downloaded source file lands under `data/inbox/uploads/`, which is ignored by Git.
+
+`claim` and `process-one` automatically run stale-processing recovery first unless `--no-recover-stale` is passed. Recovery requeues `processing` jobs older than `INGEST_STALE_PROCESSING_MINUTES` or `--stale-minutes`, leaving `attempts` intact so the next claim increments it. `reconcile-uploads` is a safe repair path for the rare state where a document was uploaded but no ingest job exists; it only inserts missing jobs for `documents(status='uploaded')` and does not delete or reset anything.
 
 Job status lifecycle:
 

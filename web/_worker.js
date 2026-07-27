@@ -875,6 +875,7 @@ async function addColumnIfMissing(env, tableName, columnName, definition) {
   // Transitional runtime DDL: keep existing ensure* calls for availability, but
   // allow production to block opportunistic ALTERs once migrations are enforced.
   if (envFlag(env.STRICT_SCHEMA)) {
+    if (await columnExists(env, tableName, columnName)) return;
     throw new Error(`Runtime schema change blocked by STRICT_SCHEMA: ${tableName}.${columnName}`);
   }
   try {
@@ -885,6 +886,11 @@ async function addColumnIfMissing(env, tableName, columnName, definition) {
       throw error;
     }
   }
+}
+
+async function columnExists(env, tableName, columnName) {
+  const result = await env.DB.prepare(`PRAGMA table_info(${tableName})`).all();
+  return (result.results || []).some((row) => String(row.name || "").toLowerCase() === String(columnName).toLowerCase());
 }
 
 async function feishuFetch(path, init = {}) {
@@ -974,6 +980,8 @@ async function listProjects(request, env) {
   const actor = request.headers.get("x-bp-user") || "";
   const highlightOnly = url.searchParams.get("highlightOnly") === "true";
   const hiddenOnly = url.searchParams.get("hiddenOnly") === "true";
+  const hideDiscussed = url.searchParams.get("hideDiscussed") === "true";
+  const hideNotInterested = url.searchParams.get("hideNotInterested") === "true";
   const includePersonalScoring = url.searchParams.get("includePersonalScoring") === "true";
   const conditions = [];
   const bindings = [];
@@ -1052,6 +1060,18 @@ async function listProjects(request, env) {
       EXISTS (SELECT 1 FROM bp_project_status hs WHERE hs.document_id = p.document_id AND hs.status IN ('discussed', 'meeting_selected')) OR
       EXISTS (SELECT 1 FROM bp_marks nm WHERE nm.document_id = p.document_id AND nm.actor = ? AND nm.mark = 'not_interested') OR
       EXISTS (SELECT 1 FROM bp_activity ha WHERE ha.document_id = p.document_id AND ha.actor = ? AND (ha.status = 'not_interested' OR ha.not_interested_at IS NOT NULL))
+    )`);
+    bindings.push(actor, actor);
+  }
+  if (hideDiscussed) {
+    conditions.push(
+      "NOT EXISTS (SELECT 1 FROM bp_project_status ds WHERE ds.document_id = p.document_id AND ds.status IN ('discussed', 'meeting_selected'))",
+    );
+  }
+  if (hideNotInterested) {
+    conditions.push(`(
+      NOT EXISTS (SELECT 1 FROM bp_marks nim WHERE nim.document_id = p.document_id AND nim.actor = ? AND nim.mark = 'not_interested') AND
+      NOT EXISTS (SELECT 1 FROM bp_activity nia WHERE nia.document_id = p.document_id AND nia.actor = ? AND (nia.status = 'not_interested' OR nia.not_interested_at IS NOT NULL))
     )`);
     bindings.push(actor, actor);
   }

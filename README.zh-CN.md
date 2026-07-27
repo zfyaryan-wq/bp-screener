@@ -56,13 +56,20 @@ Cloudflare D1 是线上系统主数据源，保存项目档案、双语 profile�
 
 LLM 通过 ModelBest LLM Center / DeepSeek V4 Flash 提供抽取、双语 profile、推荐、评分草稿和总结能力；最终评分和筛选结论由团队成员人工确认。
 
+当前线上运行行为：
+
+- 上传请求由 Worker 进入飞书云盘，然后在 D1 写入 `documents(status='uploaded')` 和 `ingest_jobs(status='queued')`，作为交给本地 Python 导入 operator 的持久交接点。
+- `scripts/process_ingest_jobs.py` 可以恢复超时停在 `processing` 的任务，也可以为缺失 job 的 uploaded 文档做对账；默认只 dry-run，只有传 `--apply` 才会修改 D1。
+- `STRICT_SCHEMA=true` 面向已完成迁移的环境：Worker 会先检查过渡期列是否已经存在，只有缺失列需要运行期 `ALTER TABLE` 时才会阻止请求。
+- 项目列表的 `hideDiscussed=true`、`hideNotInterested=true` 等可见性筛选已在 Worker 侧、`LIMIT` 前处理；前端保留客户端筛选作为二次兜底。
+
 ## 目录结构
 
 ```text
 bp-screener/
   app.py                    # 遗留/本地 Streamlit 界面
   web/                      # Cloudflare Pages 前端和 Worker
-  cloudflare/schema.sql     # D1 数据表结构
+  cloudflare/schema.sql     # 会清空表的空库 D1 基线，不是生产迁移
   bp_screener/
     config.py               # 运行配置
     db.py                   # 数据库结构与写入
@@ -263,7 +270,7 @@ python scripts\notion_sync.py sync --limit 10
 
 - `web/index.html`、`web/app.js`、`web/styles.css`：Cloudflare Pages 静态前端
 - `web/_worker.js`：Worker API，负责项目数据、筛选、推荐、评分草稿、协作、上传、wake、workbench、会话鉴权和静态资源
-- `cloudflare/schema.sql`：线上 D1 主数据库的数据表结构
+- `cloudflare/schema.sql`：会清空表的空库 D1 基线；不要当作生产迁移执行
 - `scripts/sync_to_d1.py`：把本地管道结果导出成 D1 可导入 SQL
 - `wrangler.toml`：Pages + D1 绑定配置模板
 - `docs/architecture-runbook.md`：生产数据和运维边界说明
@@ -294,12 +301,25 @@ npx wrangler d1 create bp-screener
 npx wrangler d1 execute bp-screener --remote --file cloudflare/schema.sql
 ```
 
+`cloudflare/schema.sql` 开头包含 `DROP TABLE IF EXISTS`，只适合全新空库或可丢弃环境。生产库或已有数据的 D1 不要重放这个基线，应只执行尚未应用的非破坏性 `cloudflare/migrate_*.sql` 文件。
+
 本地导入 BP 并生成 `data/bp_screener.sqlite` 后，导出 D1 数据 upsert：
 
 ```powershell
 python scripts\sync_to_d1.py
 npx wrangler d1 execute bp-screener --remote --file data\d1_seed.sql
 ```
+
+线上上传会写入 `documents(status='uploaded')` 并创建对应 `ingest_jobs(status='queued')`。如果本地 worker 或脚本在 `processing` 状态中断，`claim` 和 `process-one` 默认会先按 `INGEST_STALE_PROCESSING_MINUTES` / `--stale-minutes` 对超时任务做 dry-run 恢复，再继续 claim。也可以显式运行：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\process_ingest_jobs.py recover-stale --stale-minutes 60
+.\.venv\Scripts\python.exe scripts\process_ingest_jobs.py recover-stale --stale-minutes 60 --apply
+.\.venv\Scripts\python.exe scripts\process_ingest_jobs.py reconcile-uploads
+.\.venv\Scripts\python.exe scripts\process_ingest_jobs.py reconcile-uploads --apply
+```
+
+`reconcile-uploads` 只会为没有 job 的 `documents(status='uploaded')` 新增缺失的 `ingest_jobs`，不会删除文档，也不会重置已有 job。
 
 D1 是线上系统的主库。`scripts/sync_to_d1.py` 默认不会执行 destructive reset；生产 DROP/reset 必须有明确授权。完整 schema reset 现在必须同时传 `--reset-schema` 和 `--allow-drop`，只应在临时环境或明确批准时使用：
 
@@ -320,6 +340,14 @@ npx wrangler pages secret put BP_SESSION_SECRET --project-name bp-screener
 ```
 
 登录采用 5 个固定团队成员加 Worker session token 的极简方案。生产环境必须配置强 `BP_SESSION_SECRET`，否则 session 创建会返回配置错误，不会静默使用弱默认值。`DEBUG_ERRORS=true` 只建议本地调试时开启，用于返回 500 detail；`STRICT_SCHEMA=true` 可在 D1 迁移稳定后阻止运行期 `ALTER TABLE`。
+
+推送 web / ingest 相关改动前，可以先运行这些 CI 风格的本地检查：
+
+```powershell
+node --check web\_worker.js
+python -m py_compile scripts\process_ingest_jobs.py
+python -m pytest tests\test_process_ingest_jobs.py
+```
 
 你需要准备：
 

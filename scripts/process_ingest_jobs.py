@@ -18,6 +18,7 @@ from scripts.sync_to_d1 import DEFAULT_LOCAL_DB, DEFAULT_OUTPUT, DEFAULT_SCHEMA,
 
 DEFAULT_DATABASE = os.getenv("CLOUDFLARE_D1_DATABASE", "bp-screener")
 DEFAULT_DOWNLOAD_DIR = ROOT / "data" / "inbox" / "uploads"
+DEFAULT_STALE_PROCESSING_MINUTES = int(os.getenv("INGEST_STALE_PROCESSING_MINUTES", "60"))
 JOB_STATUSES = {"queued", "processing", "done", "failed"}
 
 
@@ -36,6 +37,17 @@ class IngestJob:
     updated_at: str
     claimed_at: str
     completed_at: str
+
+
+@dataclass
+class UploadedDocument:
+    id: int
+    file_name: str
+    source_platform: str
+    source_external_id: str
+    source_url: str
+    created_at: str
+    updated_at: str
 
 
 class D1Client:
@@ -134,6 +146,102 @@ GROUP BY status
 ORDER BY status
 """.strip()
     )
+
+
+def stale_processing_where(stale_minutes: int) -> str:
+    if stale_minutes < 1:
+        raise SystemExit("--stale-minutes must be at least 1.")
+    return (
+        "j.status = 'processing' "
+        f"AND datetime(COALESCE(j.claimed_at, j.updated_at, j.created_at)) <= datetime('now', '-{int(stale_minutes)} minutes')"
+    )
+
+
+def recover_stale_processing_jobs(
+    client: D1Client,
+    stale_minutes: int,
+    limit: int,
+    apply: bool,
+) -> list[IngestJob]:
+    jobs = [IngestJob(**row) for row in client.execute(job_select_sql(stale_processing_where(stale_minutes), limit))]
+    if not jobs:
+        return []
+    ids = ", ".join(str(job.id) for job in jobs)
+    document_ids = ", ".join(str(job.document_id) for job in jobs)
+    sql = f"""
+UPDATE ingest_jobs
+SET status = 'queued',
+    error_message = 'Requeued after stale processing timeout',
+    claimed_at = NULL,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id IN ({ids}) AND status = 'processing';
+
+UPDATE documents
+SET status = 'uploaded',
+    updated_at = CURRENT_TIMESTAMP
+WHERE id IN ({document_ids}) AND status = 'processing';
+""".strip()
+    if not apply:
+        print(f"Dry run: would requeue processing jobs older than {stale_minutes} minutes. Re-run with --apply to update D1.")
+        print(sql)
+        return jobs
+    client.execute(sql)
+    return jobs
+
+
+def reconcile_uploaded_documents(client: D1Client, limit: int, apply: bool) -> list[UploadedDocument]:
+    rows = client.execute(
+        f"""
+SELECT
+  d.id,
+  d.file_name,
+  COALESCE(d.source_platform, '') AS source_platform,
+  COALESCE(d.source_external_id, '') AS source_external_id,
+  COALESCE(d.source_url, '') AS source_url,
+  COALESCE(d.created_at, '') AS created_at,
+  COALESCE(d.updated_at, '') AS updated_at
+FROM documents d
+LEFT JOIN ingest_jobs j ON j.document_id = d.id
+WHERE d.status = 'uploaded' AND j.id IS NULL
+ORDER BY d.created_at, d.id
+LIMIT {int(limit)}
+""".strip()
+    )
+    documents = [UploadedDocument(**row) for row in rows]
+    if not documents:
+        return []
+    values = ",\n".join(
+        (
+            f"({int(document.id)}, {sql_quote(document.source_platform)}, "
+            f"{sql_quote(document.source_external_id)}, {sql_quote(document.source_url)}, "
+            "'queued', 0, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, NULL)"
+        )
+        for document in documents
+    )
+    sql = f"""
+INSERT INTO ingest_jobs (
+  document_id,
+  source_platform,
+  source_external_id,
+  source_url,
+  status,
+  attempts,
+  error_message,
+  created_at,
+  updated_at,
+  claimed_at,
+  completed_at
+)
+VALUES
+{values}
+ON CONFLICT(document_id) DO NOTHING;
+""".strip()
+    if not apply:
+        print("Dry run: would create missing ingest jobs for uploaded documents. Re-run with --apply to update D1.")
+        print(sql)
+        return documents
+    client.execute(sql)
+    return documents
 
 
 def claim_jobs(client: D1Client, limit: int, apply: bool) -> list[IngestJob]:
@@ -294,6 +402,10 @@ def process_job(
 
 
 def process_one(args: argparse.Namespace, client: D1Client) -> None:
+    if not args.no_recover_stale:
+        recovered = recover_stale_processing_jobs(client, args.stale_minutes, args.limit, args.apply)
+        if recovered:
+            print(f"Recovered {len(recovered)} stale processing job(s) before claiming.")
     job = claim_one_job(client, apply=args.apply)
     if not job:
         print("No queued ingest job found.")
@@ -349,6 +461,17 @@ def print_counts(rows: list[dict[str, Any]]) -> None:
         )
 
 
+def print_uploaded_documents(documents: list[UploadedDocument]) -> None:
+    if not documents:
+        print("No uploaded documents need ingest job reconciliation.")
+        return
+    for document in documents:
+        print(
+            f"doc={document.id} file={document.file_name} "
+            f"source={document.source_platform}:{document.source_external_id} url={document.source_url or '-'}"
+        )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
@@ -358,7 +481,7 @@ def main() -> None:
     )
     parser.add_argument(
         "command",
-        choices=["list", "status", "claim", "mark-status", "process-one", "run-once"],
+        choices=["list", "status", "claim", "mark-status", "recover-stale", "reconcile-uploads", "process-one", "run-once"],
         nargs="?",
         default="list",
     )
@@ -373,6 +496,17 @@ def main() -> None:
     parser.add_argument("--job-id", type=int, help="Required for mark-status.")
     parser.add_argument("--to", choices=["queued", "done", "failed"], help="Target status for mark-status.")
     parser.add_argument("--error-message", default="")
+    parser.add_argument(
+        "--stale-minutes",
+        type=int,
+        default=DEFAULT_STALE_PROCESSING_MINUTES,
+        help="Requeue processing jobs older than this many minutes.",
+    )
+    parser.add_argument(
+        "--no-recover-stale",
+        action="store_true",
+        help="Skip automatic stale processing recovery before claim/process-one.",
+    )
     parser.add_argument("--apply", action="store_true", help="Actually mutate D1. Without this, mutations are dry-run.")
     parser.add_argument("--json", action="store_true", help="Print rows as JSON.")
     args = parser.parse_args()
@@ -391,11 +525,31 @@ def main() -> None:
         return
 
     if args.command == "claim":
+        if not args.no_recover_stale:
+            recovered = recover_stale_processing_jobs(client, args.stale_minutes, args.limit, args.apply)
+            if recovered and not args.json:
+                print(f"Recovered {len(recovered)} stale processing job(s) before claiming.")
         jobs = claim_jobs(client, args.limit, args.apply)
         if args.json:
             print(json.dumps([job.__dict__ for job in jobs], ensure_ascii=False, indent=2))
         else:
             print_jobs(jobs)
+        return
+
+    if args.command == "recover-stale":
+        jobs = recover_stale_processing_jobs(client, args.stale_minutes, args.limit, args.apply)
+        if args.json:
+            print(json.dumps([job.__dict__ for job in jobs], ensure_ascii=False, indent=2))
+        else:
+            print_jobs(jobs)
+        return
+
+    if args.command == "reconcile-uploads":
+        documents = reconcile_uploaded_documents(client, args.limit, args.apply)
+        if args.json:
+            print(json.dumps([document.__dict__ for document in documents], ensure_ascii=False, indent=2))
+        else:
+            print_uploaded_documents(documents)
         return
 
     if args.command == "mark-status":
