@@ -47,6 +47,11 @@ const labels = {
     projectListRefreshing: "Refreshing latest projects...",
     projectListCachedRefreshing: "Showing cached list · refreshing...",
     projectListLoadError: "Unable to load BP library.",
+    overviewLoading: "Loading library overview...",
+    overviewRefreshing: "Refreshing overview...",
+    overviewCachedRefreshing: "Showing cached overview · refreshing...",
+    overviewLoadError: "Unable to load library overview.",
+    overviewEmpty: "No overview data yet.",
     retry: "Retry",
     libraryNumber: "Library #",
     libraryNumberHint: "Stable intake number, oldest first",
@@ -402,6 +407,11 @@ const labels = {
     projectListRefreshing: "正在刷新最新项目...",
     projectListCachedRefreshing: "正在显示缓存列表 · 后台刷新中...",
     projectListLoadError: "无法加载 BP 项目库。",
+    overviewLoading: "正在加载 BP 库概览...",
+    overviewRefreshing: "正在刷新概览...",
+    overviewCachedRefreshing: "正在显示缓存概览 · 后台刷新中...",
+    overviewLoadError: "无法加载 BP 库概览。",
+    overviewEmpty: "暂无可展示的概览数据。",
     retry: "重试",
     libraryNumber: "入库编号",
     libraryNumberHint: "按入库时间从早到晚固定编号",
@@ -885,6 +895,7 @@ const welcomeTemplates = {
 const language = document.querySelector("#language");
 const grid = document.querySelector("#projectGrid");
 const projectListStatus = document.querySelector("#projectListStatus");
+const overviewStatus = document.querySelector("#overviewStatus");
 const searchButton = document.querySelector("#searchButton");
 const resetFiltersButton = document.querySelector("#resetFiltersButton");
 const snippetList = document.querySelector("#snippetList");
@@ -961,18 +972,12 @@ const scoringQueueSummary = document.querySelector("#scoringQueueSummary");
 const scoreReviewCard = document.querySelector("#scoreReviewCard");
 const leftWorkspaceView = document.querySelector("#leftWorkspaceView");
 const leftCalendarView = document.querySelector("#leftCalendarView");
-const vrtDraftOpenButton = document.querySelector("#openVrtDraftsButton");
-const vrtDraftDialog = document.querySelector("#vrtDraftDialog");
-const vrtDraftCloseButton = document.querySelector("#vrtDraftCloseButton");
 const calendarRailToggle = document.querySelector("#openCalendarRail");
 const calendarDialog = document.querySelector("#calendarDialog");
 const calendarCloseButton = document.querySelector("#calendarCloseButton");
 const scoringProfileOpenButton = document.querySelector("#scoringProfileOpenButton");
 const scoringProfileOverlay = document.querySelector("#scoringProfileOverlay");
 const scoringProfileCloseButton = document.querySelector("#scoringProfileCloseButton");
-const personalActivityOpenButton = document.querySelector("#personalActivityOpenButton");
-const personalActivityOverlay = document.querySelector("#personalActivityOverlay");
-const personalActivityCloseButton = document.querySelector("#personalActivityCloseButton");
 const vrtAgentTargets = Array.from(document.querySelectorAll(".agentAvatar, .aiPanel"));
 let vrtAgentWorkingCount = 0;
 let pendingSwitchUser = "";
@@ -1083,14 +1088,6 @@ if (scoringTemplateSelect) {
 }
 generateDraftScoresButton?.addEventListener("click", generateCurrentDraftScore);
 reviewPendingDraftsButton?.addEventListener("click", reviewPendingDraftQueue);
-vrtDraftOpenButton?.addEventListener("click", openVrtDraftDialog);
-vrtDraftCloseButton?.addEventListener("click", closeVrtDraftDialog);
-vrtDraftDialog?.addEventListener("click", (event) => {
-  if (event.target === vrtDraftDialog) closeVrtDraftDialog();
-});
-vrtDraftDialog?.addEventListener("close", () => {
-  vrtDraftOpenButton?.setAttribute("aria-expanded", "false");
-});
 calendarRailToggle?.addEventListener("click", openCalendarDialog);
 calendarCloseButton?.addEventListener("click", closeCalendarDialog);
 calendarDialog?.addEventListener("click", (event) => {
@@ -1100,7 +1097,6 @@ calendarDialog?.addEventListener("close", () => {
   calendarRailToggle?.setAttribute("aria-expanded", "false");
 });
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && vrtDraftDialog?.open) closeVrtDraftDialog();
   if (event.key === "Escape" && calendarDialog?.open) closeCalendarDialog();
   if (event.key === "Escape" && scoringProfileOverlay && !scoringProfileOverlay.hidden) closeScoringProfilePanel();
 });
@@ -1108,11 +1104,6 @@ scoringProfileOpenButton?.addEventListener("click", openScoringProfilePanel);
 scoringProfileCloseButton?.addEventListener("click", closeScoringProfilePanel);
 scoringProfileOverlay?.addEventListener("click", (event) => {
   if (event.target === scoringProfileOverlay) closeScoringProfilePanel();
-});
-personalActivityOpenButton?.addEventListener("click", openPersonalActivityPanel);
-personalActivityCloseButton?.addEventListener("click", closePersonalActivityPanel);
-personalActivityOverlay?.addEventListener("click", (event) => {
-  if (event.target === personalActivityOverlay) closePersonalActivityPanel();
 });
 document.querySelector("#addCommentButton").addEventListener("click", addProjectComment);
 document.querySelector("#markNotInterestedButton").addEventListener("click", markNotInterested);
@@ -1255,50 +1246,11 @@ function closeWeightEditor() {
   }
 }
 
-function openPersonalActivityPanel() {
-  if (!personalActivityOverlay) return;
-  personalActivityOverlay.hidden = false;
-  personalActivityOpenButton?.setAttribute("aria-expanded", "true");
-  if (!reviewBoard) loadReviewBoard({ includeLeaderboards: false });
-}
-
-function closePersonalActivityPanel() {
-  if (!personalActivityOverlay) return;
-  personalActivityOverlay.hidden = true;
-  personalActivityOpenButton?.setAttribute("aria-expanded", "false");
-}
-
-function openVrtDraftDialog() {
-  if (!vrtDraftDialog) return;
-  renderScoringQueueSummary();
-  if (vrtDraftDialog.open) return;
-  if (typeof vrtDraftDialog.showModal === "function") {
-    vrtDraftDialog.showModal();
-  } else {
-    vrtDraftDialog.setAttribute("open", "");
-  }
-  vrtDraftOpenButton?.setAttribute("aria-expanded", "true");
-}
-
-function closeVrtDraftDialog() {
-  if (!vrtDraftDialog) return;
-  if (!vrtDraftDialog.open && !vrtDraftDialog.hasAttribute("open")) {
-    vrtDraftOpenButton?.setAttribute("aria-expanded", "false");
-    return;
-  }
-  if (typeof vrtDraftDialog.close === "function") {
-    vrtDraftDialog.close();
-  } else {
-    vrtDraftDialog.removeAttribute("open");
-    vrtDraftOpenButton?.setAttribute("aria-expanded", "false");
-  }
-}
-
 function openCalendarDialog() {
   if (!calendarDialog) return;
   calendarExpanded = true;
   localStorage.setItem("bp-calendar-expanded", "true");
-  if (reviewBoard) renderCalendarBoard(reviewBoard.calendar || []);
+  if (reviewBoard) renderReviewBoard();
   else loadReviewBoard({ includeLeaderboards: false });
   if (calendarDialog.open) return;
   if (typeof calendarDialog.showModal === "function") {
@@ -1779,6 +1731,7 @@ function setProjectListState(nextState = {}) {
     error: nextState.error || "",
   };
   renderProjectListStatus();
+  renderOverviewStatus();
 }
 
 function setScoringProfileState(nextState = {}) {
@@ -1814,9 +1767,45 @@ function renderProjectListStatus() {
   projectListStatus.querySelector("[data-project-list-retry]")?.addEventListener("click", loadProjects);
 }
 
+function renderOverviewStatus() {
+  if (!overviewStatus) return;
+  const { phase, error } = projectListState;
+  const messageByPhase = {
+    loading: t("overviewLoading"),
+    refreshing: t("overviewCachedRefreshing"),
+    error: error || t("overviewLoadError"),
+  };
+  const message = messageByPhase[phase] || "";
+  if (!message) {
+    overviewStatus.hidden = true;
+    overviewStatus.className = "projectListStatus overviewStatus";
+    overviewStatus.innerHTML = "";
+    return;
+  }
+  const isError = phase === "error";
+  overviewStatus.hidden = false;
+  overviewStatus.className = `projectListStatus overviewStatus ${phase}`.trim();
+  overviewStatus.innerHTML = `
+    <span>${escapeHtml(message)}</span>
+    ${isError ? `<button type="button" class="secondary compactButton" data-overview-retry>${escapeHtml(t("retry"))}</button>` : ""}
+  `;
+  overviewStatus.querySelector("[data-overview-retry]")?.addEventListener("click", loadProjects);
+}
+
 function projectListLoadingBlock(messageKey = "projectListLoading") {
   return `
     <div id="projectLoadingState" class="projectLoadingState" role="status" aria-live="polite">
+      <div class="projectLoadingSpinner" aria-hidden="true"></div>
+      <div>
+        <strong>${escapeHtml(t(messageKey))}</strong>
+      </div>
+    </div>
+  `;
+}
+
+function overviewLoadingBlock(messageKey = "overviewLoading") {
+  return `
+    <div class="overviewStateCard projectLoadingState" role="status" aria-live="polite">
       <div class="projectLoadingSpinner" aria-hidden="true"></div>
       <div>
         <strong>${escapeHtml(t(messageKey))}</strong>
@@ -1831,6 +1820,16 @@ function projectListErrorBlock(errorMessage) {
       <strong>${escapeHtml(t("projectListLoadError"))}</strong>
       <p>${escapeHtml(errorMessage || t("projectListLoadError"))}</p>
       <button type="button" class="secondary compactButton" data-project-list-retry>${escapeHtml(t("retry"))}</button>
+    </div>
+  `;
+}
+
+function overviewErrorBlock(errorMessage) {
+  return `
+    <div class="overviewStateCard projectListErrorBlock" role="alert">
+      <strong>${escapeHtml(t("overviewLoadError"))}</strong>
+      <p>${escapeHtml(errorMessage || t("overviewLoadError"))}</p>
+      <button type="button" class="secondary compactButton" data-overview-retry>${escapeHtml(t("retry"))}</button>
     </div>
   `;
 }
@@ -2890,6 +2889,10 @@ function renderScoringQueueSummary() {
   const stats = scoringQueue?.stats || scoringProfile || {};
   const draftCount = Number(stats.drafts_waiting || 0);
   const firstDraft = scoringQueue?.drafts?.[0] || null;
+  if (scoringProfileOpenButton) {
+    if (draftCount > 0) scoringProfileOpenButton.dataset.badge = String(draftCount);
+    else delete scoringProfileOpenButton.dataset.badge;
+  }
   if (reviewPendingDraftsButton) {
     reviewPendingDraftsButton.disabled = draftCount <= 0;
     reviewPendingDraftsButton.innerHTML = iconLabel("chevronRight", draftCount > 0 ? `${t("reviewNextDraft")} · ${draftCount} ${t("draftsShort")}` : t("noDraftsShort"));
@@ -2902,17 +2905,15 @@ function renderScoringQueueSummary() {
     generateDraftScoresButton.title = selectedDocumentId ? t("generateDraftScores") : t("selectProjectHint");
   }
   if (!scoringQueueSummary) return;
+  const draftStatus = draftCount > 0
+    ? t("pendingDraftCount").replace("{count}", String(draftCount))
+    : t("noDraftsForTemplate");
   scoringQueueSummary.innerHTML = `
     <div class="queueMetric templateMetric"><strong>${escapeHtml(templateLabel(activeScoringTemplate))}</strong><span>${escapeHtml(t("currentTemplate"))}</span></div>
     ${
-      draftCount > 0
-        ? `<div class="queueMetric"><strong>${draftCount}</strong><span>${escapeHtml(t("pendingDraftCount").replace("{count}", String(draftCount)))}</span></div>`
-        : `<div class="queueMetric empty"><strong>${escapeHtml(t("noDraftsShort"))}</strong><span>${escapeHtml(t("noDraftsForTemplate"))}</span></div>`
-    }
-    ${
       firstDraft?.label
-        ? `<div class="queueMetric nextDraft"><strong>${escapeHtml(String(firstDraft.draft_score ?? "-"))}</strong><span>${escapeHtml(`${t("nextShort")}: ${firstDraft.label}`)}</span></div>`
-        : ""
+        ? `<div class="queueMetric nextDraft"><strong>${escapeHtml(String(firstDraft.draft_score ?? "-"))}</strong><span>${escapeHtml(`${draftStatus} · ${t("nextShort")}: ${firstDraft.label}`)}</span></div>`
+        : `<div class="queueMetric nextDraft empty"><strong>${escapeHtml(t("noDraftsShort"))}</strong><span>${escapeHtml(draftStatus)}</span></div>`
     }
   `;
 }
@@ -2962,7 +2963,9 @@ function renderReviewBoard() {
     renderWeeklyNominationSpotlight([]);
     return;
   }
-  if (reviewWeekLabel) reviewWeekLabel.textContent = reviewBoard.week_start || "";
+  if (reviewWeekLabel) {
+    reviewWeekLabel.textContent = [t("calendarLocalTimeNotice"), reviewBoard.week_start].filter(Boolean).join(" · ");
+  }
   renderBpLeaderboards(reviewBoard.leaderboards || {});
   const shortlist = reviewBoard.shortlist || [];
   shortlistBoard.innerHTML = `
@@ -2994,6 +2997,15 @@ function renderReviewBoard() {
 
 function renderBpLeaderboards(leaderboards) {
   if (!bpLeaderboardSpotlight) return;
+  if (!leaderboards && !projects.length && projectListState.phase === "loading") {
+    bpLeaderboardSpotlight.innerHTML = overviewLoadingBlock("overviewLoading");
+    return;
+  }
+  if (!leaderboards && !projects.length && projectListState.phase === "error") {
+    bpLeaderboardSpotlight.innerHTML = overviewErrorBlock(projectListState.error);
+    bpLeaderboardSpotlight.querySelector("[data-overview-retry]")?.addEventListener("click", loadProjects);
+    return;
+  }
   const topLiked = leaderboards?.top_liked_projects || [];
   const topDisliked = leaderboards?.top_disliked_projects || [];
   const viewerCounts = leaderboards?.viewer_counts || [];
@@ -3102,41 +3114,29 @@ function renderWeeklyNominationSpotlight(nominations = []) {
     const rows = rowsByUser.get(nominator);
     if (rows.length < 1) rows.push(item);
   }
-  const hasCurrentUserNomination = nominations.some((item) => item.nominator === currentUser);
   weeklyNominationSpotlight.innerHTML = `
     <div class="weeklyNominationGrid">
       ${teamUserMeta.map((member) => weeklyNominationMemberCard(member, rowsByUser.get(member.name) || [])).join("")}
     </div>
-    ${
-      currentUser && !hasCurrentUserNomination
-        ? `<div class="weeklyNominationPrompt">
-            <span>${escapeHtml(t("noMyNominationHint"))}</span>
-            ${
-              selectedDocumentId
-                ? `<button type="button" class="secondary compactButton" data-nominate-selected ${buttonAttrs(t("nominateSelected"))}>${iconLabel("nominate", t("nominateSelected"))}</button>`
-                : `<small>${escapeHtml(t("selectBpToNominate"))}</small>`
-            }
-          </div>`
-        : ""
-    }
   `;
+  weeklyNominationSpotlight.querySelectorAll("[data-weekly-open]").forEach((button) => {
+    button.addEventListener("click", openCalendarDialog);
+  });
 }
 
 function weeklyNominationMemberCard(member, nominations = []) {
+  const item = nominations[0] || null;
+  const project = item?.project || {};
+  const projectName = project.project_name || project.company_name || "";
+  const label = projectName || t("noNominations");
   return `
-    <article class="weeklyNominationMember">
-      <div class="weeklyNominationPerson">
+    <button type="button" class="weeklyNominationMember ${item ? "nominated" : "empty"}" data-weekly-open ${buttonAttrs(`${member.displayName}: ${label}`)}>
+      <span class="weeklyNominationPerson">
         ${renderAvatar(member.name, "large")}
         <strong>${escapeHtml(member.displayName)}</strong>
-      </div>
-      <div class="weeklyNominationProjects">
-        ${
-          nominations.length
-            ? nominations.map(weeklyNominationProjectButton).join("")
-            : `<span class="weeklyNominationEmpty">${t("noNominations")}</span>`
-        }
-      </div>
-    </article>
+      </span>
+      <span class="weeklyNominationStatus">${escapeHtml(label)}</span>
+    </button>
   `;
 }
 
@@ -4831,6 +4831,23 @@ function authHeaders() {
 
 function renderCharts(items) {
   const chartGrid = document.querySelector("#chartGrid");
+  renderOverviewStatus();
+  if (!chartGrid) return;
+  if (!items.length && projectListState.phase === "loading") {
+    chartGrid.innerHTML = overviewLoadingBlock("overviewLoading");
+    if (bpLeaderboardSpotlight) bpLeaderboardSpotlight.innerHTML = overviewLoadingBlock("overviewLoading");
+    return;
+  }
+  if (!items.length && projectListState.phase === "error") {
+    chartGrid.innerHTML = overviewErrorBlock(projectListState.error);
+    chartGrid.querySelector("[data-overview-retry]")?.addEventListener("click", loadProjects);
+    if (bpLeaderboardSpotlight) bpLeaderboardSpotlight.innerHTML = `<p class="subtle errorText">${escapeHtml(t("overviewLoadError"))}</p>`;
+    return;
+  }
+  if (!items.length) {
+    chartGrid.innerHTML = `<article class="chartCard overviewEmptyCard"><strong>${escapeHtml(t("overviewEmpty"))}</strong></article>`;
+    return;
+  }
   chartGrid.innerHTML = [
     barChart(t("industryChart"), countBy(items, "industry")),
     barChart(t("stageChart"), countBy(items, "financing_stage")),

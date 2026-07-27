@@ -26,9 +26,19 @@
           <h1 data-i18n="title">VRT BP Screener</h1>
           <p id="welcomeMessage" class="subtitle"></p>
         </div>
+        <section class="weeklyNominationTopCard" aria-label="Weekly nominations">
+          <strong data-i18n="weeklyNominationBoard">Weekly nominations</strong>
+          <div id="weeklyNominationSpotlight" class="weeklyNominationSpotlight" aria-live="polite"></div>
+        </section>
         <div class="navControls">
           <button id="uploadOpenButton" type="button" class="navUploadButton" data-i18n="uploadTitle">Upload BP</button>
-          <button id="openVrtAskButton" type="button" class="navUploadButton vrtAskNavButton" data-i18n="vrtAsk">VRT Ask</button>
+          <button id="openVrtAskButton" type="button" class="navUploadButton vrtAskNavButton" data-i18n-title="vrtAsk" aria-label="VRT Ask">
+            <span class="vrtAskAvatarShell" aria-hidden="true">
+              <img src="/vrt-agent.jpg" alt="" onerror="this.hidden=true" />
+              <span>VRT</span>
+            </span>
+            <span data-i18n="vrtAsk">VRT Ask</span>
+          </button>
           <select id="language" aria-label="Language">
             <option value="en">English</option>
             <option value="zh">中文</option>
@@ -36,22 +46,11 @@
           <button id="scoringProfileOpenButton" type="button" class="railIconButton scoringProfileNavButton" aria-label="My scoring profile" aria-expanded="false" data-i18n-title="scoringProfileTitle">
             <span class="buttonIconShell" aria-hidden="true">SP</span>
           </button>
-          <button id="openVrtDraftsButton" type="button" class="railIconButton vrtDraftNavButton" aria-label="VRT" aria-expanded="false" data-i18n-title="vrtDraftsTitle">
-            <span class="buttonIconShell" aria-hidden="true">VRT</span>
-          </button>
           <button id="openCalendarRail" type="button" class="railIconButton" aria-label="Calendar" aria-expanded="false" data-i18n-title="calendarOpen">
             <span class="buttonIconShell" aria-hidden="true">
               <svg class="buttonIcon" viewBox="0 0 24 24" focusable="false">
                 <rect x="4" y="5" width="16" height="15" rx="2"></rect>
                 <path d="M8 3v4M16 3v4M4 10h16"></path>
-              </svg>
-            </span>
-          </button>
-          <button id="personalActivityOpenButton" type="button" class="railIconButton navActivityButton" aria-label="Personal activity" aria-expanded="false" data-i18n-title="personalActivity">
-            <span class="buttonIconShell" aria-hidden="true">
-              <svg class="buttonIcon" viewBox="0 0 24 24" focusable="false">
-                <path d="M5 6h14M5 12h10M5 18h7"></path>
-                <path d="M17 15l2 2 4-4"></path>
               </svg>
             </span>
           </button>
@@ -110,27 +109,14 @@
             </select>
           </section>
           <div class="weightQuickActions">
+            <button id="reviewPendingDrafts" type="button" class="secondary compactButton" data-i18n="reviewPendingDrafts">Review pending drafts</button>
+            <button id="generateDraftScores" type="button" class="compactButton" data-i18n="generateDraftScores">Generate draft for selected BP</button>
             <button id="openWeightEditor" type="button" class="secondary compactButton" data-i18n="advancedScoringSettings">Advanced scoring settings</button>
           </div>
+          <div id="scoringQueueSummary" class="scoringQueueSummary compact"></div>
+          <small id="scoringDraftStatus" class="subtle" data-i18n="currentBpOnlyHint">Current implementation drafts the selected BP first; queue review is ready for pending drafts.</small>
           <small class="subtle" data-i18n="advancedScoringHint">Weights, factor pools, personal factors, chart, and drag ordering.</small>
         </div>
-      </section>
-    </div>
-
-    <div id="personalActivityOverlay" class="activityOverlay" hidden>
-      <section class="panel opsBoardPanel activityPopover" role="dialog" aria-modal="false" aria-labelledby="personalActivityTitle">
-        <div class="sectionTitle">
-          <div>
-            <h2 id="personalActivityTitle" data-i18n="personalActivity">Personal activity</h2>
-            <span id="reviewWeekLabel" class="subtle"></span>
-          </div>
-          <div class="activityActions">
-            <button id="refreshReviewBoard" type="button" class="secondary compactButton" data-i18n="refresh">Refresh</button>
-            <button id="personalActivityCloseButton" type="button" class="secondary compactButton" data-i18n="closeUpload">Close</button>
-          </div>
-        </div>
-        <div id="shortlistBoard" class="opsBoard"></div>
-        <div id="nominationBoard" class="opsBoard"></div>
       </section>
     </div>
 
@@ -139,31 +125,18 @@
         <div class="sectionTitle">
           <div>
             <h2 id="calendarDialogTitle" data-i18n="calendarReview">Calendar review</h2>
-            <span class="subtle" data-i18n="calendarLocalTimeNotice">Shown in your local time</span>
+            <span id="reviewWeekLabel" class="subtle" data-i18n="calendarLocalTimeNotice">Shown in your local time</span>
           </div>
-          <button id="calendarCloseButton" type="button" class="secondary compactButton" data-i18n="closeUpload">Close</button>
+          <div class="activityActions">
+            <button id="refreshReviewBoard" type="button" class="secondary compactButton" data-i18n="refresh">Refresh</button>
+            <button id="calendarCloseButton" type="button" class="secondary compactButton" data-i18n="closeUpload">Close</button>
+          </div>
+        </div>
+        <div class="calendarActivityGrid">
+          <div id="shortlistBoard" class="opsBoard"></div>
+          <div id="nominationBoard" class="opsBoard"></div>
         </div>
         <div id="calendarBoard" class="opsBoard"></div>
-      </section>
-    </dialog>
-
-    <dialog id="vrtDraftDialog" class="vrtDraftDialog" aria-labelledby="vrtDraftDialogTitle">
-      <section class="panel vrtDraftPopover">
-        <div class="sectionTitle">
-          <div>
-            <h2 id="vrtDraftDialogTitle" data-i18n="vrtDraftsTitle">VRT drafts</h2>
-            <span data-i18n="vrtDraftModeCopy">VRT Agent only drafts scores. You make the final call.</span>
-          </div>
-          <button id="vrtDraftCloseButton" type="button" class="secondary compactButton" data-i18n="closeUpload">Close</button>
-        </div>
-        <div class="vrtDraftBody">
-          <div id="scoringQueueSummary" class="scoringQueueSummary compact"></div>
-          <div class="vrtDraftActions">
-            <button id="reviewPendingDrafts" type="button" class="secondary" data-i18n="reviewPendingDrafts">Review pending drafts</button>
-            <button id="generateDraftScores" type="button" data-i18n="generateDraftScores">Generate draft for selected BP</button>
-          </div>
-          <small id="scoringDraftStatus" class="subtle" data-i18n="currentBpOnlyHint">Current implementation drafts the selected BP first; queue review is ready for pending drafts.</small>
-        </div>
       </section>
     </dialog>
 
@@ -259,6 +232,7 @@
                 <h2 data-i18n="bpLibraryOverview">BP Library Overview</h2>
                 <span data-i18n="bpLibraryOverviewHint">Portfolio-wide metrics and activity snapshots.</span>
               </div>
+              <div id="overviewStatus" class="projectListStatus overviewStatus" aria-live="polite" hidden></div>
             </div>
             <div class="overviewMetricsRow">
               <div class="stats">
@@ -276,16 +250,6 @@
               </div>
               <div id="bpLeaderboardSpotlight" class="bpLeaderboardSpotlight" aria-live="polite"></div>
             </div>
-          </section>
-
-          <section class="panel weeklyNominationPanel">
-            <div class="sectionTitle">
-              <div>
-                <h2 data-i18n="weeklyNominationBoard">Weekly nominations</h2>
-                <span data-i18n="weeklyNominationBoardHint">See who nominated which projects for this week's meeting.</span>
-              </div>
-            </div>
-            <div id="weeklyNominationSpotlight" class="weeklyNominationSpotlight" aria-live="polite"></div>
           </section>
 
         </div>

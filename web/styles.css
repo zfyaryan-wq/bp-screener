@@ -188,7 +188,7 @@ select {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(180px, 0.42fr) minmax(300px, 0.58fr) auto;
   align-items: center;
   gap: 12px;
 }
@@ -339,6 +339,25 @@ h1 {
   position: relative;
   z-index: 1;
   min-width: 0;
+}
+
+.weeklyNominationTopCard {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid rgba(52, 211, 153, 0.18);
+  border-radius: 18px;
+  padding: 5px 7px;
+  background: rgba(2, 8, 8, 0.38);
+}
+
+.weeklyNominationTopCard > strong {
+  color: #bbf7d0;
+  font-size: 11px;
+  line-height: 1.15;
+  white-space: nowrap;
 }
 
 .currentUserBadge {
@@ -642,6 +661,26 @@ input.authErrorFlash {
   height: 26px;
   font-size: 9px;
   letter-spacing: -0.04em;
+}
+
+.scoringProfileNavButton[data-badge] {
+  position: relative;
+}
+
+.scoringProfileNavButton[data-badge]::after {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 16px;
+  border: 1px solid rgba(2, 8, 8, 0.72);
+  border-radius: 999px;
+  padding: 1px 4px;
+  color: #052e16;
+  background: #86efac;
+  content: attr(data-badge);
+  font-size: 10px;
+  font-weight: 950;
+  line-height: 1.2;
 }
 
 .centerRail {
@@ -1502,6 +1541,30 @@ button.secondary:hover {
   padding: 8px 10px 6px;
 }
 
+.overviewStatus {
+  max-width: min(360px, 44vw);
+  margin: 0;
+}
+
+.overviewStateCard {
+  min-height: 52px;
+  padding: 8px;
+  border-radius: 12px;
+}
+
+.overviewStateCard.projectListErrorBlock {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.overviewEmptyCard {
+  display: grid;
+  min-height: 52px;
+  align-content: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .libraryLeaderboardCard {
   display: grid;
   gap: 6px;
@@ -1630,6 +1693,13 @@ button.secondary:hover {
   overflow: auto;
   border-radius: 24px;
   box-shadow: var(--shadow), var(--glow);
+}
+
+.calendarActivityGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 8px 12px 0;
 }
 
 .calendarPopover .sectionTitle {
@@ -2477,9 +2547,10 @@ button.secondary:hover {
 
 .weeklyNominationSpotlight {
   display: grid;
-  gap: 6px;
+  gap: 0;
   min-height: 0;
-  padding: 8px 10px 10px;
+  min-width: 0;
+  padding: 0;
 }
 
 .bpLeaderboardSpotlight {
@@ -2617,27 +2688,41 @@ button.secondary:hover {
 .weeklyNominationGrid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
 }
 
 .weeklyNominationMember {
   display: grid;
   min-width: 0;
-  align-content: start;
-  gap: 3px;
+  align-content: center;
+  gap: 2px;
   border: 1px solid rgba(52, 211, 153, 0.18);
-  border-radius: 9px;
-  padding: 4px;
+  border-radius: 12px;
+  padding: 4px 5px;
+  color: var(--text);
   background:
     radial-gradient(circle at 20% 0%, rgba(34, 197, 94, 0.12), transparent 42%),
     rgba(2, 8, 8, 0.48);
+  box-shadow: none;
+  text-align: left;
+}
+
+.weeklyNominationMember.empty {
+  opacity: 0.62;
+  filter: grayscale(0.35);
+}
+
+.weeklyNominationMember:hover,
+.weeklyNominationMember:focus-visible {
+  border-color: rgba(134, 239, 172, 0.62);
+  background: rgba(34, 197, 94, 0.14);
 }
 
 .weeklyNominationPerson {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 3px;
+  gap: 4px;
   align-items: center;
   min-width: 0;
 }
@@ -2658,6 +2743,18 @@ button.secondary:hover {
 .weeklyNominationPerson strong {
   color: #d1fae5;
   font-size: 9px;
+}
+
+.weeklyNominationStatus {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .weeklyNominationProjects {
@@ -4153,10 +4250,42 @@ button.secondary:hover {
 }
 
 .vrtAskNavButton {
+  gap: 7px;
+  padding-left: 5px;
   background: rgba(20, 184, 166, 0.18);
 }
 
 .vrtAskNavButton::before {
+  display: none;
+}
+
+.vrtAskAvatarShell {
+  position: relative;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(134, 239, 172, 0.54);
+  border-radius: 50%;
+  color: #052e16;
+  background: #86efac;
+  font-size: 8px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.vrtAskAvatarShell img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.vrtAskAvatarShell img:not([src]),
+.vrtAskAvatarShell img[src=""] {
   display: none;
 }
 
@@ -4937,6 +5066,10 @@ dialog::backdrop {
     grid-template-columns: 1fr;
   }
 
+  .weeklyNominationTopCard .weeklyNominationGrid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
   .weightEditorDialog .weightWorkspace {
     grid-template-columns: 1fr;
   }
@@ -5035,6 +5168,10 @@ dialog::backdrop {
 
   .weeklyNominationGrid {
     grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  }
+
+  .weeklyNominationTopCard .weeklyNominationGrid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 }
 
