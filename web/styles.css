@@ -711,6 +711,40 @@ input.authErrorFlash {
     rgba(2, 8, 8, 0.44);
 }
 
+.activeWeightStatus {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.activeWeightStatus.loading {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+}
+
+.activeWeightStatus.loading .projectLoadingSpinner {
+  width: 18px;
+  height: 18px;
+  border-width: 2px;
+}
+
+.activeWeightStatus strong {
+  color: #d1fae5;
+}
+
+.activeWeightStatus.error strong {
+  color: #fecaca;
+}
+
+.activeWeightStatus .compactButton {
+  width: fit-content;
+  margin-top: 2px;
+  padding: 6px 10px;
+  font-size: 11px;
+}
+
 .activeWeightHeader {
   display: grid;
   gap: 2px;

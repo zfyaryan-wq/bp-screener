@@ -137,6 +137,9 @@ const labels = {
     closeUpload: "Close",
     scoringProfileTitle: "My scoring profile",
     scoringProfileHint: "Your final-score habits and current scoring lens.",
+    scoringProfileLoading: "Loading scoring profile...",
+    scoringProfileEmpty: "No scoring lens data yet. Confirm BP scores to build your profile.",
+    scoringProfileLoadError: "Unable to load scoring profile.",
     scoringTemplateTitle: "Scoring template",
     scoringTemplateHint: "Choose the template VRT Agent should draft against.",
     templateTypeA: "Type A",
@@ -481,6 +484,9 @@ const labels = {
     closeUpload: "关闭",
     scoringProfileTitle: "我的评分画像",
     scoringProfileHint: "你的最终评分习惯和当前评分视角。",
+    scoringProfileLoading: "正在加载评分画像...",
+    scoringProfileEmpty: "还没有评分视角数据。确认 BP 分数后会逐步生成画像。",
+    scoringProfileLoadError: "无法加载评分画像。",
     scoringTemplateTitle: "评分模板",
     scoringTemplateHint: "选择 VRT Agent 生成草稿时使用的模板。",
     templateTypeA: "Type A",
@@ -714,6 +720,8 @@ let selectedDocumentId = 0;
 let selectedProject = null;
 let reviewBoard = null;
 let scoringProfile = null;
+let scoringProfileRequestSeq = 0;
+let scoringProfileState = { phase: "idle", error: "" };
 let scoringQueue = null;
 let filterOptions = {};
 let currentObjectUrl = "";
@@ -1698,6 +1706,14 @@ function setProjectListState(nextState = {}) {
   renderProjectListStatus();
 }
 
+function setScoringProfileState(nextState = {}) {
+  scoringProfileState = {
+    phase: nextState.phase || "idle",
+    error: nextState.error || "",
+  };
+  renderWeightQuickPanel();
+}
+
 function setProjectSearchBusy(isBusy) {
   if (!searchButton) return;
   searchButton.disabled = isBusy;
@@ -1729,7 +1745,6 @@ function projectListLoadingBlock(messageKey = "projectListLoading") {
       <div class="projectLoadingSpinner" aria-hidden="true"></div>
       <div>
         <strong>${escapeHtml(t(messageKey))}</strong>
-        <p>${escapeHtml(t("projectListRefreshing"))}</p>
       </div>
     </div>
   `;
@@ -1781,7 +1796,7 @@ async function loadProjects() {
     setProjectListState({ phase: "refreshing", message: t("projectListCachedRefreshing") });
     renderProjectList();
   } else {
-    setProjectListState({ phase: "loading", message: t("projectListLoading") });
+    setProjectListState({ phase: "loading" });
     renderProjectList();
   }
 
@@ -2075,13 +2090,29 @@ async function loadWeightProfiles() {
 
 async function loadScoringProfile() {
   if (!currentUser) return;
+  const requestId = ++scoringProfileRequestSeq;
+  setScoringProfileState({ phase: "loading" });
   const params = new URLSearchParams({ template: activeScoringTemplate });
-  const response = await apiFetch(`/api/scoring/profile?${params.toString()}`);
-  if (!response) return;
-  const data = await response.json().catch(() => ({}));
-  scoringProfile = data.profile || null;
-  renderWeightQuickPanel();
-  renderScoringQueueSummary();
+  try {
+    const response = await apiFetch(`/api/scoring/profile?${params.toString()}`);
+    if (!response) return;
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || `${t("scoringProfileLoadError")} HTTP ${response.status}`);
+    }
+    if (requestId !== scoringProfileRequestSeq) return;
+    scoringProfile = data.profile || null;
+    setScoringProfileState({ phase: "idle" });
+    renderScoringQueueSummary();
+  } catch (error) {
+    if (requestId !== scoringProfileRequestSeq) return;
+    scoringProfile = null;
+    setScoringProfileState({
+      phase: "error",
+      error: error?.message || t("scoringProfileLoadError"),
+    });
+    renderScoringQueueSummary();
+  }
 }
 
 async function loadScoringQueue() {
@@ -2098,6 +2129,7 @@ async function handleScoringTemplateChange() {
   if (scoringTemplateSelect) scoringTemplateSelect.value = activeScoringTemplate;
   localStorage.setItem("bp-scoring-template", activeScoringTemplate);
   scoringProfile = null;
+  scoringProfileState = { phase: "loading", error: "" };
   scoringQueue = null;
   if (scoringDraftStatus) {
     scoringDraftStatus.textContent = t("scoringTemplateSwitched").replace("{template}", templateLabel(activeScoringTemplate));
@@ -2689,25 +2721,49 @@ function renderWeightQuickPanel() {
   if (activeWeightSummary) {
     const factors = (profile?.factors?.length ? profile.factors : selectedFactors).slice(0, 5);
     const learnedCount = Number(scoringProfile?.learned_from_count || 0);
-    const weightSummary = scoringProfile?.weight_summary?.text || factors.slice(0, 3).map((factor) => `${factorLabel(factor)} ${formatWeight(factor.weight)}%`).join(" / ") || t("noActiveProfile");
-    activeWeightSummary.innerHTML = factors.length
-      ? `
+    const lastUpdated = formatLocalDateTime(scoringProfile?.last_updated_at || profile?.updated_at || "");
+    const weightSummary = scoringProfile?.weight_summary?.text || factors.slice(0, 3).map((factor) => `${factorLabel(factor)} ${formatWeight(factor.weight)}%`).join(" / ");
+    if (scoringProfileState.phase === "loading") {
+      activeWeightSummary.innerHTML = `
+        <div class="activeWeightStatus loading" role="status" aria-live="polite">
+          <span class="projectLoadingSpinner" aria-hidden="true"></span>
+          <strong>${escapeHtml(t("scoringProfileLoading"))}</strong>
+        </div>
+      `;
+    } else if (scoringProfileState.phase === "error") {
+      activeWeightSummary.innerHTML = `
+        <div class="activeWeightStatus error" role="alert">
+          <strong>${escapeHtml(t("scoringProfileLoadError"))}</strong>
+          <span>${escapeHtml(scoringProfileState.error || t("scoringProfileLoadError"))}</span>
+          <button type="button" class="secondary compactButton" data-scoring-profile-retry>${escapeHtml(t("retry"))}</button>
+        </div>
+      `;
+    } else if (weightSummary || factors.length) {
+      activeWeightSummary.innerHTML = `
         <div class="activeWeightHeader">
           <strong>${escapeHtml(userDisplayName(currentUser))}</strong>
           <small>${escapeHtml(t("currentTemplate"))}: ${escapeHtml(templateLabel(activeScoringTemplate))}</small>
         </div>
         <div class="scoringProfileMeta">
-          <span>${escapeHtml(t("currentWeightSummary"))}: ${escapeHtml(weightSummary)}</span>
-          <span>${escapeHtml(t("learnedFrom").replace("{count}", String(learnedCount)))}</span>
-          <span>${escapeHtml(t("lastUpdated"))}: ${escapeHtml(formatLocalDateTime(scoringProfile?.last_updated_at || profile?.updated_at || "" ) || "-")}</span>
+          ${weightSummary ? `<span>${escapeHtml(t("currentWeightSummary"))}: ${escapeHtml(weightSummary)}</span>` : ""}
+          ${learnedCount > 0 ? `<span>${escapeHtml(t("learnedFrom").replace("{count}", String(learnedCount)))}</span>` : ""}
+          ${lastUpdated ? `<span>${escapeHtml(t("lastUpdated"))}: ${escapeHtml(lastUpdated)}</span>` : ""}
         </div>
         <div class="profileFactorList compact">
           ${factors
             .map((factor, index) => `<span class="profileFactor" style="--profile-factor-color: ${escapeHtml(factorColor(index))}">${index + 1}. ${escapeHtml(factorLabel(factor))} · ${formatWeight(factor.weight)}%</span>`)
             .join("")}
         </div>
-      `
-      : `<p class="subtle">${t("noActiveProfile")}</p>`;
+      `;
+    } else {
+      activeWeightSummary.innerHTML = `
+        <div class="activeWeightStatus empty">
+          <strong>${escapeHtml(t("currentTemplate"))}: ${escapeHtml(templateLabel(activeScoringTemplate))}</strong>
+          <span>${escapeHtml(t("scoringProfileEmpty"))}</span>
+        </div>
+      `;
+    }
+    activeWeightSummary.querySelector("[data-scoring-profile-retry]")?.addEventListener("click", loadScoringProfile);
   }
   if (!quickProfileSwitch) return;
   const mine = weightProfiles.filter((item) => item.owner === currentUser).slice(0, 4);
