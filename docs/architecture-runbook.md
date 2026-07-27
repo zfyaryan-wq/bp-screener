@@ -10,6 +10,31 @@ BP Screener is sized for a five-person review team. Keep the system simple: Clou
 - `scripts/sync_to_d1.py` defaults to data-only `INSERT OR REPLACE` SQL. Do not run destructive schema resets in production.
 - Only run `python scripts\sync_to_d1.py --reset-schema --allow-drop --execute` against disposable or explicitly approved environments.
 
+## Cloudflare D1 Migration Checklist
+
+Use append-only migrations for production D1. Never run destructive schema reset, `DROP TABLE`, or `--reset-schema --allow-drop` against production. Before each remote migration, confirm the account, database name, backup/export state, and that the SQL file has been reviewed.
+
+Recommended order for a new or partially migrated D1 database:
+
+1. `cloudflare/schema.sql`: baseline application schema for documents, projects, chunks, scoring templates, and search tables.
+2. `cloudflare/migrate_document_upload_sources.sql`: adds upload source/status columns used by the hosted upload flow.
+3. `cloudflare/migrate_ingest_jobs.sql`: adds the durable ingestion queue consumed by local/background operators.
+4. `cloudflare/migrate_account_access_codes.sql`: stores per-actor access-code hashes for simple team auth.
+5. `cloudflare/migrate_review_ops.sql`: adds project status, marks, votes, shortlist, nominations, meetings, and daily activity.
+6. `cloudflare/migrate_bp_collaboration.sql`: adds comments, activity, and reactions for BP review collaboration.
+7. `cloudflare/migrate_weight_factors.sql`: adds reusable public/personal factor definitions.
+8. `cloudflare/migrate_weight_profiles.sql`: adds weight profiles, likes, comments, and profile events.
+9. `cloudflare/migrate_bp_scoring.sql`: adds AI drafts and user final scores; run after weight profiles because it references `weight_profiles`.
+10. `cloudflare/migrate_project_translations.sql`: adds generated per-language project profiles.
+
+Run each migration once, then verify key tables or columns before moving to the next file:
+
+```powershell
+npx wrangler d1 execute bp-screener --remote --file cloudflare\migrate_ingest_jobs.sql
+```
+
+For existing databases, inspect the current schema first and skip migrations already applied. If an `ALTER TABLE ADD COLUMN` migration has already run, do not re-run it blindly; create a small follow-up migration instead.
+
 ## Auth Rules
 
 - The web app uses the five known team members plus a personal access code or short session token.
@@ -92,6 +117,13 @@ Retry by inspecting the failed job, fixing the underlying issue, then running `m
 ## CI/CD Minimum Safety Net
 
 GitHub Actions runs a non-deploying CI workflow on `main` pushes and pull requests. It checks JavaScript syntax for `web/app.js` and `web/_worker.js`, compiles key Python scripts/modules, and verifies `--help` for the D1 sync and ingest job CLIs. The workflow requires no production secrets and does not deploy Cloudflare Pages.
+
+## Fast Iteration Principles
+
+- Web-only changes: keep UI edits small, run `node --check web\app.js` and `node --check web\_worker.js`, then deploy through the existing Cloudflare Pages path only after CI passes.
+- D1 changes: add a new `cloudflare/migrate_*.sql` file, document its order here, test on local/disposable D1 first, then run the remote migration once. Do not edit old migrations after they may have reached production.
+- AI/data changes: prefer dry-run commands first, keep generated `data/*.sql` and `data/*.json` out of Git, and only use `--apply`, `--execute`, or remote writes after reviewing the generated diff/output.
+- Ingestion changes: validate with `scripts\process_ingest_jobs.py status`, `list`, or `process-one` before `process-one --apply`; keep failures retryable through D1 job state instead of manual database edits.
 
 ## Roadmap
 

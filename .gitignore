@@ -7,11 +7,13 @@ __pycache__/
 *.pyc
 data/*.sqlite
 data/*.sqlite-*
-data/d1_seed.sql
+data/*.sql
+data/*.json
 data/inbox/*
 data/processed/*
 data/index/*
 data/tessdata/*
+!data/README.md
 !data/inbox/.gitkeep
 !data/processed/.gitkeep
 !data/index/.gitkeep

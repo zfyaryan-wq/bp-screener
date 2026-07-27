@@ -38,15 +38,33 @@ jobs:
       - name: Compile key Python entry points
         run: |
           python -m py_compile \
+            bp_screener/__init__.py \
+            bp_screener/config.py \
+            bp_screener/db.py \
+            bp_screener/embeddings.py \
+            bp_screener/extractor.py \
             scripts/sync_to_d1.py \
             scripts/process_ingest_jobs.py \
+            scripts/build_semantic_index.py \
+            scripts/build_translations.py \
+            scripts/feishu_sync.py \
+            scripts/import_framework_factors.py \
+            scripts/upload_files_to_r2.py \
+            bp_screener/ingest.py \
             bp_screener/feishu.py \
-            bp_screener/search.py \
-            bp_screener/embeddings.py \
+            bp_screener/llm_client.py \
+            bp_screener/llm_json.py \
+            bp_screener/models.py \
+            bp_screener/parsers.py \
             bp_screener/services/rag.py \
-            bp_screener/services/library_qa.py
+            bp_screener/search.py \
+            bp_screener/services/committee.py \
+            bp_screener/services/library_qa.py \
+            bp_screener/services/translation.py
 
       - name: Check CLI help
         run: |
           python scripts/sync_to_d1.py --help
           python scripts/process_ingest_jobs.py --help
+          python scripts/build_translations.py --help
+          python scripts/import_framework_factors.py --help
