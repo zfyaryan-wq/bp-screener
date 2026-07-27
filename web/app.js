@@ -29,6 +29,7 @@ const labels = {
     sortCustomWeight: "Personal weight ranking",
     sortPersonalScoring: "My confirmed scores",
     search: "Search",
+    resetFilters: "Reset",
     projects: "Projects",
     projectName: "Project name",
     sourceSearch: "Source Snippet Search",
@@ -39,7 +40,7 @@ const labels = {
     personalWorkspace: "Personal Workspace",
     personalWorkspaceHint: "Current user, personal repository, weights, and personal activity.",
     bpLibraryOverview: "BP Library Overview",
-    bpLibraryOverviewHint: "Portfolio-wide metrics, filters, sorting, and the BP list.",
+    bpLibraryOverviewHint: "Portfolio-wide metrics and activity snapshots.",
     bpLibraryList: "BP Library List",
     projectListLoading: "Loading BP library...",
     projectListRefreshing: "Refreshing latest projects...",
@@ -48,6 +49,11 @@ const labels = {
     retry: "Retry",
     libraryNumber: "Library #",
     libraryNumberHint: "Stable intake number, oldest first",
+    untitledBp: "Untitled BP",
+    notParsedYet: "Not parsed yet",
+    sourceDocument: "Source document",
+    noSummaryYet: "No summary parsed yet.",
+    noTagsYet: "No tags yet",
     hideDiscussed: "Discussed",
     hideNotInterested: "Not interested",
     highlightOnly: "Highlighted",
@@ -376,6 +382,7 @@ const labels = {
     sortCustomWeight: "个人权重排序",
     sortPersonalScoring: "我的确认评分",
     search: "搜索",
+    resetFilters: "重置",
     projects: "项目",
     projectName: "项目名",
     sourceSearch: "原文片段搜索",
@@ -386,7 +393,7 @@ const labels = {
     personalWorkspace: "个人工作区",
     personalWorkspaceHint: "当前用户、个人仓库、权重方案和个人活动集中在这里。",
     bpLibraryOverview: "BP 库概览",
-    bpLibraryOverviewHint: "集中查看全库指标、筛选、排序和 BP 列表。",
+    bpLibraryOverviewHint: "集中查看全库指标和协作动态。",
     bpLibraryList: "BP 库列表",
     projectListLoading: "正在加载 BP 项目库...",
     projectListRefreshing: "正在刷新最新项目...",
@@ -395,6 +402,11 @@ const labels = {
     retry: "重试",
     libraryNumber: "入库编号",
     libraryNumberHint: "按入库时间从早到晚固定编号",
+    untitledBp: "未命名 BP",
+    notParsedYet: "待解析",
+    sourceDocument: "来源文件",
+    noSummaryYet: "暂无解析摘要。",
+    noTagsYet: "暂无标签",
     hideDiscussed: "已讨论",
     hideNotInterested: "不感兴趣",
     highlightOnly: "高亮",
@@ -870,6 +882,7 @@ const language = document.querySelector("#language");
 const grid = document.querySelector("#projectGrid");
 const projectListStatus = document.querySelector("#projectListStatus");
 const searchButton = document.querySelector("#searchButton");
+const resetFiltersButton = document.querySelector("#resetFiltersButton");
 const snippetList = document.querySelector("#snippetList");
 const snippetQuery = document.querySelector("#snippetQuery");
 const recommendQuestion = document.querySelector("#recommendQuestion");
@@ -1016,6 +1029,7 @@ language.addEventListener("change", () => {
 });
 
 searchButton?.addEventListener("click", loadProjects);
+resetFiltersButton?.addEventListener("click", resetProjectFilters);
 document.querySelector("#visibilityFilter")?.addEventListener("change", (event) => {
   applyVisibilityFilterValue(event.target.value || "active");
   loadProjects();
@@ -1924,6 +1938,27 @@ function setupFilterAutoRefresh() {
   ].forEach((selector) => {
     document.querySelector(selector)?.addEventListener("change", loadProjects);
   });
+}
+
+function resetProjectFilters() {
+  [
+    "#keyword",
+    "#industry",
+    "#stage",
+    "#recommendation",
+    "#country",
+    "#customerType",
+    "#revenueStage",
+    "#riskLevel",
+    "#tag",
+  ].forEach((selector) => {
+    const control = document.querySelector(selector);
+    if (control) control.value = "";
+  });
+  const sortBy = document.querySelector("#sortBy");
+  if (sortBy) sortBy.value = "updated_desc";
+  applyVisibilityFilterValue("active");
+  loadProjects();
 }
 
 function syncHiddenFilterControls() {
@@ -3706,6 +3741,19 @@ function cleanProjectDisplayText(value) {
     .trim();
 }
 
+function displayOrFallback(value, fallbackKey = "notParsedYet") {
+  const text = cleanProjectDisplayText(value);
+  return isUnknownProjectValue(text) ? t(fallbackKey) : text;
+}
+
+function firstUsefulProjectValue(project, keys = []) {
+  for (const key of keys) {
+    const text = cleanProjectDisplayText(project?.[key]);
+    if (!isUnknownProjectValue(text)) return text;
+  }
+  return "";
+}
+
 function conciseProjectText(value, maxLength = 54) {
   const text = cleanProjectDisplayText(value)
     .split(/[\n\r。；;|]+/)
@@ -3717,12 +3765,13 @@ function conciseProjectText(value, maxLength = 54) {
 
 function fallbackProjectName(project) {
   const profileCandidates = [
+    project.document_title,
+    project.title,
+    project.file_name,
     project.summary,
     project.one_liner,
     project.one_line_summary,
     project.profile_summary,
-    project.title,
-    project.document_title,
   ];
   for (const candidate of profileCandidates) {
     const text = conciseProjectText(candidate);
@@ -3737,7 +3786,7 @@ function fallbackProjectName(project) {
   const fileName = conciseProjectText(project.file_name, 48);
   if (!isUnknownProjectValue(fileName)) return fileName;
 
-  return project.library_number ? `BP #${Number(project.library_number)}` : `BP ${project.document_id || ""}`.trim();
+  return project.library_number ? `${t("untitledBp")} #${Number(project.library_number)}` : t("untitledBp");
 }
 
 function projectDisplayInfo(project) {
@@ -3748,10 +3797,14 @@ function projectDisplayInfo(project) {
   const title = conciseProjectText(fullName, 48) || fallbackProjectName(project);
   const company = cleanProjectDisplayText(project.company_name);
   const region = cleanProjectDisplayText(project.country_or_region);
-  const summary = conciseProjectText(project.one_liner || project.one_line_summary || project.summary, 70);
+  const summary = conciseProjectText(project.one_liner || project.one_line_summary || project.summary || project.business_model, 92);
   const sublineParts = [];
   if (!isUnknownProjectValue(company) && company !== fullName) sublineParts.push(company);
   if (!isUnknownProjectValue(region)) sublineParts.push(region);
+  if (!sublineParts.length) {
+    const sourceTitle = conciseProjectText(project.document_title || project.file_name, 54);
+    if (!isUnknownProjectValue(sourceTitle) && sourceTitle !== fullName) sublineParts.push(sourceTitle);
+  }
   if (!sublineParts.length && !isUnknownProjectValue(summary)) sublineParts.push(summary);
   return {
     title,
@@ -3765,9 +3818,18 @@ function projectRow(project) {
   const display = projectDisplayInfo(project);
   const libraryNumber = Number(project.library_number || 0);
   const libraryNumberLabel = libraryNumber > 0 ? `#${libraryNumber}` : "-";
-  const sector = project.industry || t("unknown");
-  const stageCustomer = [project.customer_type, project.revenue_stage].filter(Boolean).join(" / ") || t("unknown");
-  const summary = display.summary || project.one_line_summary || project.summary || "";
+  const sector = displayOrFallback(project.industry);
+  const financingStage = displayOrFallback(project.financing_stage);
+  const riskLevel = displayOrFallback(project.risk_level);
+  const recommendation = displayOrFallback(project.recommendation);
+  const stageCustomer = [project.customer_type, project.revenue_stage]
+    .map((value) => displayOrFallback(value))
+    .filter((value) => value && value !== t("notParsedYet"))
+    .join(" / ") || t("notParsedYet");
+  const summary = display.summary || conciseProjectText(project.one_line_summary || project.summary || project.business_model, 120);
+  const tags = Array.isArray(project.tags) ? project.tags.filter((tag) => !isUnknownProjectValue(tag)).slice(0, 10) : [];
+  const sourceTitle = displayOrFallback(project.document_title || project.file_name, "sourceDocument");
+  const scoreValue = Number(project.personal_score ?? project.screening_score);
   const ops = project.ops || {};
   const status = ops.global_status?.status || "new";
   const highlights = ops.highlights || {};
@@ -3780,6 +3842,10 @@ function projectRow(project) {
     project.operational_penalty ? `${t("recommendationPenalty")} ${project.operational_penalty}` : "",
   ].filter(Boolean);
   const personalScoreLabel = project.personal_score_source === "confirmed" ? t("finalScore") : project.personal_score_source === "draft" ? t("draftScore") : t("baseScore");
+  const scoreLabel = Number.isFinite(scoreValue) ? String(scoreValue) : "-";
+  const teamSummary = firstUsefulProjectValue(project, ["team_highlights"]);
+  const tractionSummary = firstUsefulProjectValue(project, ["traction"]);
+  const riskSummary = firstUsefulProjectValue(project, ["risks"]);
   const rowDetailsId = `project-row-details-${Number(project.document_id || 0)}`;
 
   return `
@@ -3797,13 +3863,15 @@ function projectRow(project) {
         <strong title="${escapeHtml(sector)}">${escapeHtml(sector)}</strong>
       </div>
       <div class="projectCell projectStackCell" data-label="${escapeHtml(t("stageLabel"))}">
-        <strong title="${escapeHtml(project.financing_stage || t("unknown"))}">${escapeHtml(project.financing_stage || t("unknown"))}</strong>
+        <strong title="${escapeHtml(financingStage)}">${escapeHtml(financingStage)}</strong>
+        ${stageCustomer !== t("notParsedYet") ? `<small title="${escapeHtml(stageCustomer)}">${escapeHtml(stageCustomer)}</small>` : ""}
       </div>
       <div class="projectCell scoreCell projectStackCell" data-label="${escapeHtml(t("scoreColumn"))}">
-        <strong title="${escapeHtml(personalScoreLabel)}">${Number(project.personal_score ?? project.screening_score ?? 0)}</strong>
+        <strong title="${escapeHtml(`${personalScoreLabel}: ${scoreLabel}`)}">${escapeHtml(scoreLabel)}</strong>
+        <small>${escapeHtml(personalScoreLabel)}</small>
       </div>
       <div class="projectCell projectStackCell" data-label="${escapeHtml(t("riskLevelLabel"))}">
-        <strong title="${escapeHtml(project.recommendation || t("unknown"))}">${escapeHtml(project.risk_level || t("unknown"))}</strong>
+        <strong title="${escapeHtml(`${t("recommendation")}: ${recommendation}`)}">${escapeHtml(riskLevel)}</strong>
       </div>
       <div class="rowActions" data-label="${escapeHtml(t("actions"))}">
         <button type="button" class="secondary projectExpandButton" data-project-expand="${project.document_id}" aria-expanded="false" aria-controls="${escapeHtml(rowDetailsId)}" ${buttonAttrs(t("profileDetails"))}>${iconLabel("chevronRight", t("profileDetails"))}</button>
@@ -3811,17 +3879,18 @@ function projectRow(project) {
         ${renderProjectHighlightButton(project.ops, project.document_id)}
       </div>
       <div id="${escapeHtml(rowDetailsId)}" class="projectRowDetails" hidden>
-        ${summary ? `<p class="projectRowSummary">${escapeHtml(summary)}</p>` : ""}
+        <p class="projectRowSummary">${escapeHtml(summary || t("noSummaryYet"))}</p>
         <div class="projectRowDetailGrid">
           <section>
             <strong>${escapeHtml(t("riskRecommendationColumn"))}</strong>
-            <p class="subtle">${escapeHtml(project.recommendation || t("unknown"))}</p>
+            <p class="subtle">${escapeHtml(recommendation)}</p>
             <p class="subtle">${escapeHtml(stageCustomer)}</p>
+            ${riskSummary ? `<p class="subtle">${escapeHtml(riskSummary)}</p>` : ""}
           </section>
           <section>
-            <strong>${escapeHtml(t("teamPresence"))}</strong>
-            <div class="presenceCell">${renderPresenceChips(project.collaboration?.statuses || [])}</div>
-            ${project.collaboration?.team_summary ? `<p class="subtle">${escapeHtml(project.collaboration.team_summary)}</p>` : ""}
+            <strong>${escapeHtml(t("team"))}</strong>
+            <p class="subtle">${escapeHtml(teamSummary || project.collaboration?.team_summary || t("notParsedYet"))}</p>
+            ${tractionSummary ? `<p class="subtle">${escapeHtml(t("traction"))}: ${escapeHtml(tractionSummary)}</p>` : ""}
           </section>
           <section>
             <strong>${escapeHtml(t("collaboration"))}</strong>
@@ -3835,8 +3904,9 @@ function projectRow(project) {
           <section>
             <strong>${escapeHtml(t("tagsSummary"))}</strong>
             <div class="tags projectTags">
-              ${(project.tags || []).map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("") || `<span class="subtle">${escapeHtml(t("unknown"))}</span>`}
+              ${tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("") || `<span class="subtle">${escapeHtml(t("noTagsYet"))}</span>`}
             </div>
+            <p class="subtle">${escapeHtml(t("sourceDocument"))}: ${escapeHtml(sourceTitle)}</p>
           </section>
           <section class="projectRowSecondaryActions">
             <strong>${escapeHtml(t("actions"))}</strong>

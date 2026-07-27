@@ -256,7 +256,7 @@
             <div class="sectionTitle">
               <div>
                 <h2 data-i18n="bpLibraryOverview">BP Library Overview</h2>
-                <span data-i18n="bpLibraryOverviewHint">Portfolio-wide metrics, filters, sorting, and the BP list.</span>
+                <span data-i18n="bpLibraryOverviewHint">Portfolio-wide metrics and activity snapshots.</span>
               </div>
             </div>
             <div class="overviewMetricsRow">
@@ -290,102 +290,110 @@
             <div id="weeklyNominationSpotlight" class="weeklyNominationSpotlight" aria-live="polite"></div>
           </section>
 
-          <section class="panel filters">
-            <div>
-              <label data-i18n="keyword">Keyword</label>
-              <input id="keyword" type="search" placeholder="Healthcare, SaaS, Series A" />
-            </div>
-            <div>
-              <label data-i18n="industry">Industry</label>
-              <select id="industry">
-                <option value="" data-i18n="any">Any</option>
-              </select>
-            </div>
-            <div>
-              <label data-i18n="stage">Stage</label>
-              <select id="stage">
-                <option value="" data-i18n="any">Any</option>
-              </select>
-            </div>
-            <div>
-              <label data-i18n="recommendation">Recommendation</label>
-              <select id="recommendation">
-                <option value="" data-i18n="any">Any</option>
-                <option value="高" data-i18n="high">High</option>
-                <option value="中" data-i18n="medium">Medium</option>
-                <option value="低" data-i18n="low">Low</option>
-                <option value="未知" data-i18n="unknown">Unknown</option>
-              </select>
-            </div>
-            <div>
-              <label data-i18n="country">Country / region</label>
-              <select id="country">
-                <option value="" data-i18n="any">Any</option>
-              </select>
-            </div>
-            <div>
-              <label data-i18n="customerType">Customer type</label>
-              <select id="customerType">
-                <option value="" data-i18n="any">Any</option>
-              </select>
-            </div>
-            <div>
-              <label data-i18n="revenueStage">Revenue stage</label>
-              <select id="revenueStage">
-                <option value="" data-i18n="any">Any</option>
-              </select>
-            </div>
-            <div>
-              <label data-i18n="riskLevel">Risk level</label>
-              <select id="riskLevel">
-                <option value="" data-i18n="any">Any</option>
-                <option value="高" data-i18n="high">High</option>
-                <option value="中" data-i18n="medium">Medium</option>
-                <option value="低" data-i18n="low">Low</option>
-                <option value="未知" data-i18n="unknown">Unknown</option>
-              </select>
-            </div>
-            <div>
-              <label data-i18n="tagFilter">Tags / keywords</label>
-              <select id="tag">
-                <option value="" data-i18n="any">Any</option>
-              </select>
-            </div>
-            <div>
-              <label data-i18n="sortBy">Sort by</label>
-              <select id="sortBy">
-                <option value="updated_desc" data-i18n="sortUpdated">Newest updated</option>
-                <option value="ai_rank_desc" data-i18n="sortAiRanked">VRT Agent ranked</option>
-                <option value="screening_score_desc" data-i18n="sortScreening">Screening score</option>
-                <option value="recommendation_desc" data-i18n="sortRecommendation">Recommendation</option>
-                <option value="team_score_desc" data-i18n="sortTeam">Team strength</option>
-                <option value="traction_score_desc" data-i18n="sortTraction">Traction</option>
-                <option value="risk_low_first" data-i18n="sortRisk">Lower risk first</option>
-                <option value="custom_weight" data-i18n="sortCustomWeight">Personal weight ranking</option>
-                <option value="personal_scoring_desc" data-i18n="sortPersonalScoring">My confirmed scores</option>
-              </select>
-            </div>
-            <div>
-              <label data-i18n="visibilityFilter">Visibility</label>
-              <select id="visibilityFilter">
-                <option value="active" data-i18n="visibilityActive">Active BPs</option>
-                <option value="hide_discussed" data-i18n="hideDiscussedTitle">Hide discussed</option>
-                <option value="hide_not_interested" data-i18n="hideNotInterestedTitle">Hide not interested</option>
-                <option value="highlighted" data-i18n="highlightOnlyTitle">Highlighted only</option>
-                <option value="hidden" data-i18n="hiddenOnlyTitle">Hidden only</option>
-              </select>
-            </div>
-            <button id="searchButton" data-i18n="search">Search</button>
-          </section>
         </div>
 
         <section class="panel bpListPanel">
-          <div class="sectionTitle">
-            <div>
+          <div class="bpListToolbar">
+            <div class="bpListTitle">
               <h2 data-i18n="bpLibraryList">BP Library List</h2>
+              <div id="projectListStatus" class="projectListStatus" aria-live="polite" hidden></div>
             </div>
+            <section class="filters bpListFilters" aria-label="BP list filters">
+              <div class="filterField keywordFilter">
+                <label data-i18n="keyword">Keyword</label>
+                <input id="keyword" type="search" placeholder="Healthcare, SaaS, Series A" />
+              </div>
+              <div class="filterField">
+                <label data-i18n="industry">Industry</label>
+                <select id="industry">
+                  <option value="" data-i18n="any">Any</option>
+                </select>
+              </div>
+              <div class="filterField">
+                <label data-i18n="stage">Stage</label>
+                <select id="stage">
+                  <option value="" data-i18n="any">Any</option>
+                </select>
+              </div>
+              <div class="filterField sortFilter">
+                <label data-i18n="sortBy">Sort by</label>
+                <select id="sortBy">
+                  <option value="updated_desc" data-i18n="sortUpdated">Newest updated</option>
+                  <option value="ai_rank_desc" data-i18n="sortAiRanked">VRT Agent ranked</option>
+                  <option value="screening_score_desc" data-i18n="sortScreening">Screening score</option>
+                  <option value="recommendation_desc" data-i18n="sortRecommendation">Recommendation</option>
+                  <option value="team_score_desc" data-i18n="sortTeam">Team strength</option>
+                  <option value="traction_score_desc" data-i18n="sortTraction">Traction</option>
+                  <option value="risk_low_first" data-i18n="sortRisk">Lower risk first</option>
+                  <option value="custom_weight" data-i18n="sortCustomWeight">Personal weight ranking</option>
+                  <option value="personal_scoring_desc" data-i18n="sortPersonalScoring">My confirmed scores</option>
+                </select>
+              </div>
+              <div class="filterField">
+                <label data-i18n="visibilityFilter">Visibility</label>
+                <select id="visibilityFilter">
+                  <option value="active" data-i18n="visibilityActive">Active BPs</option>
+                  <option value="hide_discussed" data-i18n="hideDiscussedTitle">Hide discussed</option>
+                  <option value="hide_not_interested" data-i18n="hideNotInterestedTitle">Hide not interested</option>
+                  <option value="highlighted" data-i18n="highlightOnlyTitle">Highlighted only</option>
+                  <option value="hidden" data-i18n="hiddenOnlyTitle">Hidden only</option>
+                </select>
+              </div>
+              <div class="filterActions">
+                <button id="searchButton" type="button" data-i18n="search">Search</button>
+                <button id="resetFiltersButton" type="button" class="secondary compactButton" data-i18n="resetFilters">Reset</button>
+              </div>
+              <details class="advancedFilterDetails">
+                <summary data-i18n="moreFilters">More filters</summary>
+                <div class="advancedFilterBody">
+                  <div class="filterField">
+                    <label data-i18n="recommendation">Recommendation</label>
+                    <select id="recommendation">
+                      <option value="" data-i18n="any">Any</option>
+                      <option value="高" data-i18n="high">High</option>
+                      <option value="中" data-i18n="medium">Medium</option>
+                      <option value="低" data-i18n="low">Low</option>
+                      <option value="未知" data-i18n="unknown">Unknown</option>
+                    </select>
+                  </div>
+                  <div class="filterField">
+                    <label data-i18n="country">Country / region</label>
+                    <select id="country">
+                      <option value="" data-i18n="any">Any</option>
+                    </select>
+                  </div>
+                  <div class="filterField">
+                    <label data-i18n="customerType">Customer type</label>
+                    <select id="customerType">
+                      <option value="" data-i18n="any">Any</option>
+                    </select>
+                  </div>
+                  <div class="filterField">
+                    <label data-i18n="revenueStage">Revenue stage</label>
+                    <select id="revenueStage">
+                      <option value="" data-i18n="any">Any</option>
+                    </select>
+                  </div>
+                  <div class="filterField">
+                    <label data-i18n="riskLevel">Risk level</label>
+                    <select id="riskLevel">
+                      <option value="" data-i18n="any">Any</option>
+                      <option value="高" data-i18n="high">High</option>
+                      <option value="中" data-i18n="medium">Medium</option>
+                      <option value="低" data-i18n="low">Low</option>
+                      <option value="未知" data-i18n="unknown">Unknown</option>
+                    </select>
+                  </div>
+                  <div class="filterField">
+                    <label data-i18n="tagFilter">Tags / keywords</label>
+                    <select id="tag">
+                      <option value="" data-i18n="any">Any</option>
+                    </select>
+                  </div>
+                </div>
+              </details>
+            </section>
           </div>
-          <div id="projectListStatus" class="projectListStatus" aria-live="polite" hidden></div>
           <section id="projectGrid" class="projectList" aria-live="polite"></section>
         </section>
       </section>

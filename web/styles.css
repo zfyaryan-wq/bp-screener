@@ -964,11 +964,12 @@ input.authErrorFlash {
 }
 
 .filters {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: end;
-  padding: 8px;
+  min-width: 0;
+  padding: 0;
 }
 
 label {
@@ -995,6 +996,21 @@ select {
   font-size: 11px;
 }
 
+.filterField {
+  min-width: 112px;
+  flex: 1 1 118px;
+}
+
+.keywordFilter {
+  min-width: min(210px, 100%);
+  flex-grow: 1.55;
+}
+
+.sortFilter {
+  min-width: min(156px, 100%);
+  flex-grow: 1.2;
+}
+
 .filters input,
 .filters select {
   min-height: 34px;
@@ -1014,8 +1030,21 @@ select {
   font-size: 12px;
 }
 
+.filterActions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  align-items: end;
+}
+
+.filterActions button.secondary {
+  margin-top: 0;
+}
+
 .advancedFilterDetails {
-  align-self: stretch;
+  position: relative;
+  flex: 0 0 auto;
+  align-self: end;
   border: 1px solid rgba(52, 211, 153, 0.18);
   border-radius: 12px;
   background: rgba(2, 8, 8, 0.44);
@@ -1031,7 +1060,21 @@ select {
 }
 
 .advancedFilterBody {
-  padding: 0 8px 8px;
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 8;
+  display: grid;
+  width: min(760px, calc(100vw - 32px));
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 8px;
+  border: 1px solid rgba(52, 211, 153, 0.22);
+  border-radius: 16px;
+  padding: 10px;
+  background:
+    linear-gradient(180deg, rgba(7, 22, 19, 0.98), rgba(2, 8, 8, 0.98)) padding-box,
+    linear-gradient(135deg, rgba(52, 211, 153, 0.28), rgba(20, 184, 166, 0.06)) border-box;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.42);
 }
 
 .hiddenFilterGroup {
@@ -1390,7 +1433,7 @@ button.secondary:hover {
   gap: 8px;
   min-width: 0;
   min-height: 0;
-  max-height: clamp(220px, 24dvh, 320px);
+  max-height: clamp(190px, 21dvh, 280px);
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -3112,25 +3155,53 @@ button.secondary:hover {
 
 .bpListPanel {
   display: grid;
-  grid-template-rows: auto auto minmax(360px, 1fr);
-  min-height: clamp(480px, 64dvh, 820px);
+  grid-template-rows: auto minmax(360px, 1fr);
+  min-height: clamp(520px, 68dvh, 860px);
   overflow: hidden;
+}
+
+.bpListToolbar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px 14px;
+  align-items: start;
+  border-bottom: 1px solid rgba(52, 211, 153, 0.14);
+  padding: 11px 12px 10px;
+  background:
+    radial-gradient(circle at top left, rgba(34, 197, 94, 0.1), transparent 36%),
+    rgba(2, 8, 8, 0.18);
+}
+
+.bpListTitle {
+  min-width: 126px;
+  padding-top: 17px;
+}
+
+.bpListTitle h2 {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.bpListFilters {
+  justify-content: flex-end;
 }
 
 .projectListStatus {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin: 10px 14px 0;
+  justify-content: flex-start;
+  gap: 8px;
+  margin: 6px 0 0;
   border: 1px solid rgba(52, 211, 153, 0.22);
   border-radius: 14px;
-  padding: 8px 10px;
+  padding: 6px 8px;
   color: #bbf7d0;
   background:
     radial-gradient(circle at top left, rgba(34, 197, 94, 0.14), transparent 36%),
     rgba(2, 8, 8, 0.58);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
 }
 
@@ -4641,7 +4712,6 @@ dialog::backdrop {
     margin-top: 10px;
   }
 
-  .filters,
   .chartGrid,
   .weeklyNominationGrid,
   .bpLeaderboardGrid,
@@ -4666,6 +4736,32 @@ dialog::backdrop {
 
   .stats {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .bpListToolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .bpListTitle {
+    padding-top: 0;
+  }
+
+  .bpListFilters {
+    justify-content: flex-start;
+  }
+
+  .advancedFilterDetails {
+    flex: 1 1 100%;
+  }
+
+  .advancedFilterBody {
+    position: static;
+    width: 100%;
+    margin-top: 0;
+    border-inline: 0;
+    border-bottom: 0;
+    border-radius: 0 0 12px 12px;
+    box-shadow: none;
   }
 
   .projectTableHeader {
@@ -4828,6 +4924,20 @@ dialog::backdrop {
 
   .projectRow {
     grid-template-columns: 1fr;
+  }
+
+  .filterField,
+  .keywordFilter,
+  .sortFilter {
+    flex-basis: 100%;
+  }
+
+  .filterActions {
+    width: 100%;
+  }
+
+  .filterActions button {
+    flex: 1;
   }
 
   .rowActions button {
