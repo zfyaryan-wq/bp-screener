@@ -30,6 +30,7 @@ const labels = {
     sortPersonalScoring: "My confirmed scores",
     search: "Search",
     resetFilters: "Reset",
+    vrtAsk: "VRT Ask",
     projects: "Projects",
     projectName: "Project name",
     sourceSearch: "Source Snippet Search",
@@ -383,6 +384,7 @@ const labels = {
     sortPersonalScoring: "我的确认评分",
     search: "搜索",
     resetFilters: "重置",
+    vrtAsk: "VRT 提问",
     projects: "项目",
     projectName: "项目名",
     sourceSearch: "原文片段搜索",
@@ -889,6 +891,10 @@ const recommendQuestion = document.querySelector("#recommendQuestion");
 const recommendButton = document.querySelector("#recommendButton");
 const recommendResult = document.querySelector("#recommendResult");
 const dialog = document.querySelector("#projectDialog");
+const projectDialogCloseButton = document.querySelector("#projectDialogCloseButton");
+const openVrtAskButton = document.querySelector("#openVrtAskButton");
+const vrtAskDialog = document.querySelector("#vrtAskDialog");
+const vrtAskCloseButton = document.querySelector("#vrtAskCloseButton");
 const detail = document.querySelector("#projectDetail");
 const loginOverlay = document.querySelector("#loginOverlay");
 const loginForm = document.querySelector("#loginForm");
@@ -1035,14 +1041,23 @@ document.querySelector("#visibilityFilter")?.addEventListener("change", (event) 
   loadProjects();
 });
 document.querySelector("#snippetButton")?.addEventListener("click", searchSnippets);
-recommendButton.addEventListener("click", recommendProjects);
-recommendQuestion.addEventListener("keydown", (event) => {
+openVrtAskButton?.addEventListener("click", openVrtAskDialog);
+vrtAskCloseButton?.addEventListener("click", closeVrtAskDialog);
+vrtAskDialog?.addEventListener("click", (event) => {
+  if (event.target === vrtAskDialog) closeVrtAskDialog();
+});
+projectDialogCloseButton?.addEventListener("click", closeProjectDialog);
+dialog?.addEventListener("click", (event) => {
+  if (event.target === dialog) closeProjectDialog();
+});
+recommendButton?.addEventListener("click", recommendProjects);
+recommendQuestion?.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
     event.preventDefault();
     recommendProjects();
   }
 });
-recommendQuestion.addEventListener("input", resizeRecommendComposer);
+recommendQuestion?.addEventListener("input", resizeRecommendComposer);
 resizeRecommendComposer();
 snippetQuery?.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
@@ -1101,7 +1116,7 @@ document.querySelector("#addCommentButton").addEventListener("click", addProject
 document.querySelector("#markNotInterestedButton").addEventListener("click", markNotInterested);
 document.querySelector("#projectAssistantButton").addEventListener("click", askProjectAssistant);
 document.querySelector("#refreshReviewBoard")?.addEventListener("click", loadReviewBoard);
-document.querySelector("#closeDialog")?.addEventListener("click", () => dialog?.close());
+document.querySelector("#closeDialog")?.addEventListener("click", closeProjectDialog);
 currentUserBadge?.addEventListener("click", openUserSwitchDialog);
 document.querySelector("#closeUserSwitch")?.addEventListener("click", closeUserSwitchDialog);
 cancelUserSwitchButton?.addEventListener("click", clearPendingUserSwitch);
@@ -1151,8 +1166,29 @@ function t(key) {
 }
 
 function resizeRecommendComposer() {
+  if (!recommendQuestion) return;
   recommendQuestion.style.height = "auto";
   recommendQuestion.style.height = `${Math.min(recommendQuestion.scrollHeight, 112)}px`;
+}
+
+function openProjectDialog() {
+  if (!dialog) return;
+  if (!dialog.open) dialog.showModal();
+}
+
+function closeProjectDialog() {
+  if (dialog?.open) dialog.close();
+}
+
+function openVrtAskDialog() {
+  if (!vrtAskDialog) return;
+  if (!vrtAskDialog.open) vrtAskDialog.showModal();
+  resizeRecommendComposer();
+  recommendQuestion?.focus();
+}
+
+function closeVrtAskDialog() {
+  if (vrtAskDialog?.open) vrtAskDialog.close();
 }
 
 function applyLanguage() {
@@ -3998,6 +4034,7 @@ async function showProject(documentId) {
   renderScoreReviewCard(project);
   renderBpPreview(project);
   renderProjectOps(project);
+  openProjectDialog();
   await recordProjectActivity(selectedDocumentId, "viewed", { refresh: false });
   await loadProjectContext(selectedDocumentId);
   await loadSimilarProjects(selectedDocumentId);

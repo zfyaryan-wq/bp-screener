@@ -28,6 +28,7 @@
         </div>
         <div class="navControls">
           <button id="uploadOpenButton" type="button" class="navUploadButton" data-i18n="uploadTitle">Upload BP</button>
+          <button id="openVrtAskButton" type="button" class="navUploadButton vrtAskNavButton" data-i18n="vrtAsk">VRT Ask</button>
           <select id="language" aria-label="Language">
             <option value="en">English</option>
             <option value="zh">中文</option>
@@ -301,23 +302,23 @@
             <section class="filters bpListFilters" aria-label="BP list filters">
               <div class="filterField keywordFilter">
                 <label data-i18n="keyword">Keyword</label>
-                <input id="keyword" type="search" placeholder="Healthcare, SaaS, Series A" />
+                <input id="keyword" type="search" placeholder="Healthcare, SaaS, Series A" aria-label="Keyword" data-i18n-title="keyword" />
               </div>
               <div class="filterField">
                 <label data-i18n="industry">Industry</label>
-                <select id="industry">
+                <select id="industry" aria-label="Industry" data-i18n-title="industry">
                   <option value="" data-i18n="any">Any</option>
                 </select>
               </div>
               <div class="filterField">
                 <label data-i18n="stage">Stage</label>
-                <select id="stage">
+                <select id="stage" aria-label="Stage" data-i18n-title="stage">
                   <option value="" data-i18n="any">Any</option>
                 </select>
               </div>
               <div class="filterField sortFilter">
                 <label data-i18n="sortBy">Sort by</label>
-                <select id="sortBy">
+                <select id="sortBy" aria-label="Sort by" data-i18n-title="sortBy">
                   <option value="updated_desc" data-i18n="sortUpdated">Newest updated</option>
                   <option value="ai_rank_desc" data-i18n="sortAiRanked">VRT Agent ranked</option>
                   <option value="screening_score_desc" data-i18n="sortScreening">Screening score</option>
@@ -331,7 +332,7 @@
               </div>
               <div class="filterField">
                 <label data-i18n="visibilityFilter">Visibility</label>
-                <select id="visibilityFilter">
+                <select id="visibilityFilter" aria-label="Visibility" data-i18n-title="visibilityFilter">
                   <option value="active" data-i18n="visibilityActive">Active BPs</option>
                   <option value="hide_discussed" data-i18n="hideDiscussedTitle">Hide discussed</option>
                   <option value="hide_not_interested" data-i18n="hideNotInterestedTitle">Hide not interested</option>
@@ -398,43 +399,55 @@
         </section>
       </section>
 
-      <aside class="rightRail">
-        <section class="panel rightInsightPanel">
-          <section class="aiPanel compactSection idle">
-            <div class="aiQuickHeader">
-              <div class="assistantTitle">
-                <img class="agentAvatar idle" src="/vrt-agent.jpg" alt="VRT Agent" />
-                <h2 data-i18n="aiFinder">VRT Agent Project Finder</h2>
-              </div>
+      <dialog id="vrtAskDialog" class="vrtAskDialog" aria-labelledby="vrtAskDialogTitle">
+        <button id="vrtAskCloseButton" type="button" class="close iconButton" aria-label="Close" data-i18n-title="closeUpload">
+          <svg class="buttonIcon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M6 6l12 12M18 6L6 18"></path>
+          </svg>
+        </button>
+        <section class="panel aiPanel compactSection idle">
+          <div class="aiQuickHeader">
+            <div class="assistantTitle">
+              <img class="agentAvatar idle" src="/vrt-agent.jpg" alt="VRT Agent" />
+              <h2 id="vrtAskDialogTitle" data-i18n="aiFinder">VRT Agent Project Finder</h2>
             </div>
-            <div class="aiPrompt">
-              <div class="aiComposer">
-                <textarea
-                  id="recommendQuestion"
-                  rows="1"
-                  data-i18n-placeholder="aiPlaceholder"
-                  placeholder="Which AI/tech healthcare projects have strong teams and early traction?"
-                ></textarea>
-                <button
-                  id="recommendButton"
-                  type="button"
-                  class="aiSendButton"
-                  data-i18n-title="askAi"
-                  aria-label="Ask VRT Agent"
-                  title="Ask VRT Agent"
-                >
-                  <svg class="buttonIcon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                    <path d="M5 12h14M13 6l6 6-6 6"></path>
-                  </svg>
-                </button>
-              </div>
-              <div id="recommendResult" class="recommendResult"></div>
+          </div>
+          <div class="aiPrompt">
+            <div class="aiComposer">
+              <textarea
+                id="recommendQuestion"
+                rows="1"
+                data-i18n-placeholder="aiPlaceholder"
+                placeholder="Which AI/tech healthcare projects have strong teams and early traction?"
+              ></textarea>
+              <button
+                id="recommendButton"
+                type="button"
+                class="aiSendButton"
+                data-i18n-title="askAi"
+                aria-label="Ask VRT Agent"
+                title="Ask VRT Agent"
+              >
+                <svg class="buttonIcon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M5 12h14M13 6l6 6-6 6"></path>
+                </svg>
+              </button>
             </div>
-          </section>
+            <div id="recommendResult" class="recommendResult"></div>
+          </div>
+        </section>
+      </dialog>
 
+      <dialog id="projectDialog" class="projectDialog" aria-labelledby="projectDialogTitle">
+        <button id="projectDialogCloseButton" type="button" class="close iconButton" aria-label="Close" data-i18n-title="closeUpload">
+          <svg class="buttonIcon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M6 6l12 12M18 6L6 18"></path>
+          </svg>
+        </button>
+        <section class="panel rightInsightPanel projectDialogPanel">
           <section class="detailPanel compactSection">
             <div class="compactSectionTitle">
-              <h2 data-i18n="rightContext">BP Context</h2>
+              <h2 id="projectDialogTitle" data-i18n="rightContext">BP Context</h2>
             </div>
             <div id="projectDetail" class="projectDetail">
               <p class="subtle" data-i18n="selectProjectHint">Select a project to review the BP and team context here.</p>
@@ -486,7 +499,7 @@
             </div>
           </details>
         </section>
-      </aside>
+      </dialog>
     </main>
 
     <script src="/app.js?v=20260726-name-only-login-v1" type="module"></script>
