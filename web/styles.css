@@ -4590,6 +4590,10 @@ dialog::backdrop {
     grid-template-columns: 1fr;
   }
 
+  .workbenchShell.scoringProfileNavLayout {
+    grid-template-columns: 1fr;
+  }
+
   .leftRail,
   .rightRail,
   .centerRail {
@@ -4787,7 +4791,8 @@ dialog::backdrop {
     border-radius: 22px;
   }
 
-  .activityPopover {
+  .activityPopover,
+  .scoringProfilePopover {
     width: 100%;
     max-height: min(78dvh, 680px);
     border-radius: 22px;
@@ -4795,6 +4800,7 @@ dialog::backdrop {
 
   .uploadPopover .sectionTitle,
   .activityPopover .sectionTitle,
+  .scoringProfilePopover .sectionTitle,
   .calendarPopover .sectionTitle,
   .vrtDraftPopover .sectionTitle {
     display: grid;

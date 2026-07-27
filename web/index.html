@@ -32,6 +32,9 @@
             <option value="en">English</option>
             <option value="zh">中文</option>
           </select>
+          <button id="scoringProfileOpenButton" type="button" class="railIconButton scoringProfileNavButton" aria-label="My scoring profile" aria-expanded="false" data-i18n-title="scoringProfileTitle">
+            <span class="buttonIconShell" aria-hidden="true">SP</span>
+          </button>
           <button id="openVrtDraftsButton" type="button" class="railIconButton vrtDraftNavButton" aria-label="VRT" aria-expanded="false" data-i18n-title="vrtDraftsTitle">
             <span class="buttonIconShell" aria-hidden="true">VRT</span>
           </button>
@@ -78,6 +81,37 @@
             Drag a PDF, PPT, PPTX, DOC, or DOCX here, or click to choose a file. The file will be archived to Feishu Drive.
           </p>
           <small id="uploadStatus" class="uploadStatus" data-i18n="uploadIdle">Waiting for a BP file.</small>
+        </div>
+      </section>
+    </div>
+
+    <div id="scoringProfileOverlay" class="activityOverlay scoringProfileOverlay" hidden>
+      <section class="panel scoringProfilePopover" role="dialog" aria-modal="false" aria-labelledby="scoringProfilePopoverTitle">
+        <div class="sectionTitle">
+          <div>
+            <h2 id="scoringProfilePopoverTitle" data-i18n="scoringProfileTitle">My scoring profile</h2>
+            <span data-i18n="scoringProfileHint">Your final-score habits and current scoring lens.</span>
+          </div>
+          <button id="scoringProfileCloseButton" type="button" class="secondary compactButton" data-i18n="closeUpload">Close</button>
+        </div>
+        <div class="weightQuickBody">
+          <div id="activeWeightSummary" class="activeWeightSummary"></div>
+          <section class="scoringTemplateBlock">
+            <div>
+              <strong data-i18n="scoringTemplateTitle">Scoring template</strong>
+              <small data-i18n="scoringTemplateHint">Choose the template VRT Agent should draft against.</small>
+            </div>
+            <select id="scoringTemplate">
+              <option value="type_a" data-i18n="templateTypeA">Type A</option>
+              <option value="type_b" data-i18n="templateTypeB">Type B</option>
+              <option value="type_c" data-i18n="templateTypeC">Type C</option>
+              <option value="my_custom" data-i18n="templateMyCustom">My custom</option>
+            </select>
+          </section>
+          <div class="weightQuickActions">
+            <button id="openWeightEditor" type="button" class="secondary compactButton" data-i18n="advancedScoringSettings">Advanced scoring settings</button>
+          </div>
+          <small class="subtle" data-i18n="advancedScoringHint">Weights, factor pools, personal factors, chart, and drag ordering.</small>
         </div>
       </section>
     </div>
@@ -132,37 +166,9 @@
       </section>
     </dialog>
 
-    <main class="workbenchShell">
+    <main class="workbenchShell scoringProfileNavLayout">
       <aside class="leftRail">
-        <div id="leftWorkspaceView" class="leftRailView">
-          <section class="panel weightQuickPanel scoringQuickPanel">
-            <div class="sectionTitle">
-              <div>
-                <h2 data-i18n="scoringProfileTitle">My scoring profile</h2>
-                <span data-i18n="scoringProfileHint">Your final-score habits and current scoring lens.</span>
-              </div>
-            </div>
-            <div class="weightQuickBody">
-              <div id="activeWeightSummary" class="activeWeightSummary"></div>
-              <section class="scoringTemplateBlock">
-                <div>
-                  <strong data-i18n="scoringTemplateTitle">Scoring template</strong>
-                  <small data-i18n="scoringTemplateHint">Choose the template VRT Agent should draft against.</small>
-                </div>
-                <select id="scoringTemplate">
-                  <option value="type_a" data-i18n="templateTypeA">Type A</option>
-                  <option value="type_b" data-i18n="templateTypeB">Type B</option>
-                  <option value="type_c" data-i18n="templateTypeC">Type C</option>
-                  <option value="my_custom" data-i18n="templateMyCustom">My custom</option>
-                </select>
-              </section>
-              <div class="weightQuickActions">
-                <button id="openWeightEditor" type="button" class="secondary compactButton" data-i18n="advancedScoringSettings">Advanced scoring settings</button>
-              </div>
-              <small class="subtle" data-i18n="advancedScoringHint">Weights, factor pools, personal factors, chart, and drag ordering.</small>
-            </div>
-          </section>
-        </div>
+        <div id="leftWorkspaceView" class="leftRailView"></div>
 
         <div id="leftCalendarView" class="leftRailView calendarRailView" hidden></div>
       </aside>
