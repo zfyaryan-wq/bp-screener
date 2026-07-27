@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -227,7 +228,10 @@ def export_seed(
 
 
 def execute_seed(database_name: str, output_path: Path, remote: bool = True) -> None:
-    command = ["npx", "wrangler", "d1", "execute", database_name, "--file", str(output_path)]
+    npx = shutil.which("npx.cmd") or shutil.which("npx")
+    if not npx:
+        raise SystemExit("npx was not found on PATH. Install Node.js/npm or run Wrangler directly.")
+    command = [npx, "wrangler", "d1", "execute", database_name, "--file", str(output_path)]
     command.append("--remote" if remote else "--local")
     subprocess.run(
         command,

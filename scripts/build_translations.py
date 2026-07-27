@@ -139,20 +139,37 @@ def translate_batch(projects: list[dict], target_language: str) -> dict[int, dic
     return result
 
 
-def build_translations(db_path: Path, limit: int | None = None, force: bool = False, batch_size: int = 8) -> None:
+def build_translations(
+    db_path: Path,
+    limit: int | None = None,
+    force: bool = False,
+    batch_size: int = 8,
+    document_ids: list[int] | None = None,
+    languages: list[str] | None = None,
+) -> None:
     with connect(db_path) as conn:
+        where = ""
+        params: list[object] = []
+        if document_ids:
+            placeholders = ", ".join("?" for _ in document_ids)
+            where = f"WHERE p.document_id IN ({placeholders})"
+            params.extend(document_ids)
         rows = conn.execute(
-            """
+            f"""
             SELECT p.*, d.file_name, d.source_url
             FROM projects p
             JOIN documents d ON d.id = p.document_id
+            {where}
             ORDER BY p.updated_at DESC, p.id DESC
-            """
+            """,
+            params,
         ).fetchall()
         if limit:
             rows = rows[:limit]
 
-        for lang, target_language in LANGUAGES.items():
+        selected_languages = languages or list(LANGUAGES)
+        for lang in selected_languages:
+            target_language = LANGUAGES[lang]
             pending = []
             for row in rows:
                 document_id = int(row["document_id"])
@@ -193,8 +210,17 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--force", action="store_true")
+    parser.add_argument("--document-id", type=int, action="append", default=[], help="Translate only the selected document_id; can be repeated.")
+    parser.add_argument("--lang", choices=sorted(LANGUAGES), action="append", default=[], help="Translate only this language; can be repeated.")
     args = parser.parse_args()
-    build_translations(args.db, limit=args.limit, force=args.force, batch_size=args.batch_size)
+    build_translations(
+        args.db,
+        limit=args.limit,
+        force=args.force,
+        batch_size=args.batch_size,
+        document_ids=args.document_id,
+        languages=args.lang,
+    )
 
 
 if __name__ == "__main__":
