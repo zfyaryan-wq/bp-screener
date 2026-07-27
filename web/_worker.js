@@ -1113,7 +1113,7 @@ async function listProjects(request, env) {
     await ensureWeightTables(env);
     profile = await getWeightProfile(weightProfileId, env);
   }
-  let projects = (result.results || []).map(normalizeProject);
+  let projects = (result.results || []).map((row) => normalizeProject(row, lang));
   if (revenueStage) {
     projects = projects.filter((project) => matchesProjectRevenueStage(project, revenueStage)).slice(0, 200);
   }
@@ -1130,7 +1130,7 @@ async function listProjects(request, env) {
 
   return json(
     {
-      projects: projects.map(listProjectDto),
+      projects: projects.map((project) => listProjectDto(project, lang)),
       weight_profile: profile ? normalizeWeightProfile(profile) : null,
       highlight_summary: summarizeProjectHighlights(projects),
     },
@@ -1520,7 +1520,7 @@ async function getProject(request, id, env) {
   `).bind(documentId).all();
 
   const actor = request.headers.get("x-bp-user") || "";
-  const normalized = normalizeProject(project);
+  const normalized = normalizeProject(project, lang);
   await attachPersonalScoring([normalized], actor, env, scoringTemplate);
   await attachProjectCollaboration([normalized], env, lang, actor);
   return json({ project: normalized, chunks: chunks.results || [] });
@@ -1852,7 +1852,7 @@ async function shortlistItems(request, env) {
       position: Number(row.position || 0),
       note: row.note || "",
       added_at: row.created_at,
-      project: normalizeProject(row),
+      project: normalizeProject(row, lang),
     }));
     return json({ items });
   }
@@ -1980,7 +1980,7 @@ async function similarProjects(request, documentId, env) {
     LIMIT 180
   `).bind(lang, documentId).all();
   const candidates = (result.results || [])
-    .map(normalizeProject)
+    .map((row) => normalizeProject(row, lang))
     .map((project) => ({ ...project, similarity_score: projectSimilarityScore(base, project), compare: structuredProjectCompare(base, project, lang) }))
     .filter((project) => project.similarity_score > 0)
     .sort((a, b) => {
@@ -2249,7 +2249,7 @@ async function shortlistSnapshot(env, actor, lang = "en") {
     ORDER BY s.position ASC, s.updated_at DESC
     LIMIT 20
   `).bind(lang, actor).all();
-  return (result.results || []).map((row) => ({ position: Number(row.position || 0), note: row.note || "", project: normalizeProject(row) }));
+  return (result.results || []).map((row) => ({ position: Number(row.position || 0), note: row.note || "", project: normalizeProject(row, lang) }));
 }
 
 async function listNominations(env, weekStart, actor, lang = "en") {
@@ -2285,7 +2285,7 @@ async function listNominations(env, weekStart, actor, lang = "en") {
     reason: row.reason || "",
     created_at: row.created_at,
     votes: votesByNomination.get(Number(row.id)) || { support: 0, oppose: 0, neutral: 0, my_vote: "" },
-    project: normalizeProject(row),
+    project: normalizeProject(row, lang),
   }));
 }
 
@@ -2362,7 +2362,7 @@ async function reactionLeaderboard(env, reaction, lang = "en") {
     ORDER BY count DESC, updated_at DESC
     LIMIT 5
   `).bind(lang, reaction).all();
-  return (result.results || []).map(leaderboardProjectRow);
+  return (result.results || []).map((row) => leaderboardProjectRow(row, lang));
 }
 
 async function dislikedLeaderboard(env, lang = "en") {
@@ -2402,7 +2402,7 @@ async function dislikedLeaderboard(env, lang = "en") {
     ORDER BY count DESC, updated_at DESC
     LIMIT 5
   `).bind(lang).all();
-  return (result.results || []).map(leaderboardProjectRow);
+  return (result.results || []).map((row) => leaderboardProjectRow(row, lang));
 }
 
 async function viewerCountLeaderboard(env) {
@@ -2424,12 +2424,12 @@ async function viewerCountLeaderboard(env) {
   });
 }
 
-function leaderboardProjectRow(row) {
+function leaderboardProjectRow(row, lang = "en") {
   return {
     count: Number(row.count || 0),
     actors: sortTeamActors(String(row.actors || "").split(",")),
     updated_at: row.updated_at || "",
-    project: normalizeProject(row),
+    project: normalizeProject(row, lang),
   };
 }
 
@@ -3057,7 +3057,7 @@ async function fetchProjectForContext(documentId, env, lang = "en") {
     LEFT JOIN project_translations t ON t.document_id = p.document_id AND t.lang = ?
     WHERE p.document_id = ?
   `).bind(lang, documentId).first();
-  return row ? normalizeProject(row) : null;
+  return row ? normalizeProject(row, lang) : null;
 }
 
 async function fetchProjectChunks(documentId, env, limit = 8) {
@@ -3291,7 +3291,7 @@ async function recommendProjects(request, env) {
     const candidates = await recommendationCandidates(intent, question, env, lang);
     const weakMatch = isWeakRecommendationMatch(candidates);
     if (!candidates.length || weakMatch) {
-      const guidance = await recommendationGuidance(question, intent, candidates.map(normalizeProject), env, lang);
+      const guidance = await recommendationGuidance(question, intent, candidates.map((row) => normalizeProject(row, lang)), env, lang);
       return json({
         question,
         query_intent: intent,
@@ -3301,7 +3301,7 @@ async function recommendProjects(request, env) {
       });
     }
 
-    const localizedCandidates = candidates.map(normalizeProject);
+    const localizedCandidates = candidates.map((row) => normalizeProject(row, lang));
     const collaborationByDocument = await collaborationContextMap(
       localizedCandidates.map((project) => project.document_id),
       env,
@@ -5188,7 +5188,7 @@ async function loadProjectForScoring(documentId, lang, env) {
     LEFT JOIN project_translations t ON t.document_id = p.document_id AND t.lang = ?
     WHERE p.document_id = ?
   `).bind(lang, documentId).first();
-  return row ? normalizeProject(row) : null;
+  return row ? normalizeProject(row, lang) : null;
 }
 
 async function buildScoreDraft(project, profile, templateKey, lang, env) {
@@ -5333,7 +5333,7 @@ async function upsertScoreDraft(env, { document_id, actor, template_key, profile
   ).run();
 }
 
-function normalizeProject(row) {
+function normalizeProject(row, lang = "en") {
   const localized = parseObjectField(row.localized_profile_json);
   const merged = {
     ...row,
@@ -5359,7 +5359,7 @@ function normalizeProject(row) {
     merged.company_name,
     merged.file_name,
   );
-  return {
+  const normalized = {
     ...merged,
     document_title: documentTitle,
     ai_related: Boolean(merged.ai_related),
@@ -5370,16 +5370,31 @@ function normalizeProject(row) {
     tags: parseJsonField(merged.tags),
     evidence: parseJsonField(merged.evidence),
   };
+  return lang === "zh" ? normalized : sanitizeEnglishProjectDisplay(normalized);
 }
 
-function listProjectDto(project) {
-  const summary = firstProjectText(project.one_line_summary, project.summary, project.one_liner, project.business_model);
+function sanitizeEnglishProjectDisplay(project) {
+  const clean = { ...project };
+  for (const field of ["project_name", "company_name", "document_title", "title", "one_liner", "one_line_summary", "summary", "profile_summary"]) {
+    if (hasCjkText(clean[field])) clean[field] = "";
+  }
+  const fallbackTitle = firstEnglishProjectText(clean.document_title, clean.title, clean.file_name) || untitledBpLabel(clean.library_number);
+  clean.document_title = clean.document_title || fallbackTitle;
+  clean.title = clean.title || fallbackTitle;
+  return clean;
+}
+
+function listProjectDto(project, lang = "en") {
+  const textForLang = lang === "zh" ? firstProjectText : firstEnglishProjectText;
+  const summary = textForLang(project.one_line_summary, project.summary, project.one_liner, project.business_model);
+  const title = textForLang(project.title, project.document_title, project.file_name) || (lang === "zh" ? "" : untitledBpLabel(project.library_number));
+  const documentTitle = textForLang(project.document_title, project.file_name) || title;
   return {
     id: project.id,
     document_id: project.document_id,
     library_number: project.library_number,
-    project_name: project.project_name,
-    company_name: project.company_name,
+    project_name: textForLang(project.project_name),
+    company_name: textForLang(project.company_name),
     industry: project.industry,
     country_or_region: project.country_or_region,
     financing_stage: project.financing_stage,
@@ -5391,8 +5406,8 @@ function listProjectDto(project) {
     tags: (project.tags || []).slice(0, 12),
     summary,
     one_liner: project.one_liner || "",
-    title: project.title || project.document_title || project.file_name || "",
-    document_title: project.document_title || project.file_name || "",
+    title,
+    document_title: documentTitle,
     one_line_summary: project.one_line_summary || summary,
     business_model: project.business_model,
     team_highlights: (project.team_highlights || []).slice(0, 4),
@@ -5436,6 +5451,20 @@ function firstProjectText(...values) {
     }
   }
   return "";
+}
+
+function firstEnglishProjectText(...values) {
+  return firstProjectText(...values.filter((value) => !hasCjkText(value)));
+}
+
+function hasCjkText(value) {
+  const text = Array.isArray(value) ? value.filter(Boolean).join(" / ") : String(value || "");
+  return /[\u3400-\u9fff]/.test(text);
+}
+
+function untitledBpLabel(libraryNumber = 0) {
+  const number = Number(libraryNumber || 0);
+  return number > 0 ? `Untitled BP #${number}` : "Untitled BP";
 }
 
 function parseObjectField(value) {

@@ -30,6 +30,11 @@ const labels = {
     sortPersonalScoring: "My confirmed scores",
     search: "Search",
     resetFilters: "Reset",
+    clearKeyword: "Clear keyword",
+    keywordPlaceholder: "Search industry, company, technology, region, stage, or theme",
+    keywordFilterHint: "Keyword is the main search. Other filters narrow the result.",
+    keywordSearching: "Searching...",
+    noFilteredProjects: "No matches. Try a broader keyword or clear filters.",
     vrtAsk: "VRT Ask",
     projects: "Projects",
     projectName: "Project name",
@@ -396,6 +401,11 @@ const labels = {
     sortPersonalScoring: "我的确认评分",
     search: "搜索",
     resetFilters: "重置",
+    clearKeyword: "清空关键词",
+    keywordPlaceholder: "搜索行业、公司、技术、地区、阶段或主题",
+    keywordFilterHint: "关键词是主搜索；其他筛选用于继续收窄。",
+    keywordSearching: "搜索中...",
+    noFilteredProjects: "没有匹配结果。试试更宽泛关键词，或清空筛选。",
     vrtAsk: "VRT 提问",
     projects: "项目",
     projectName: "项目名",
@@ -913,6 +923,8 @@ const projectListStatus = document.querySelector("#projectListStatus");
 const overviewStatus = document.querySelector("#overviewStatus");
 const searchButton = document.querySelector("#searchButton");
 const resetFiltersButton = document.querySelector("#resetFiltersButton");
+const keywordInput = document.querySelector("#keyword");
+const keywordClearButton = document.querySelector("#keywordClearButton");
 const snippetList = document.querySelector("#snippetList");
 const snippetQuery = document.querySelector("#snippetQuery");
 const recommendQuestion = document.querySelector("#recommendQuestion");
@@ -1058,6 +1070,28 @@ language.addEventListener("change", () => {
 
 searchButton?.addEventListener("click", loadProjects);
 resetFiltersButton?.addEventListener("click", resetProjectFilters);
+keywordInput?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.isComposing) {
+    event.preventDefault();
+    loadProjects();
+  }
+});
+keywordClearButton?.addEventListener("click", () => {
+  if (!keywordInput) return;
+  keywordInput.value = "";
+  syncKeywordClearButton();
+  keywordInput.focus();
+  loadProjects();
+});
+document.querySelectorAll("[data-keyword-chip]").forEach((button) => {
+  button.addEventListener("click", () => {
+    if (!keywordInput) return;
+    keywordInput.value = button.dataset.keywordChip || "";
+    syncKeywordClearButton();
+    keywordInput.focus();
+    loadProjects();
+  });
+});
 document.querySelector("#visibilityFilter")?.addEventListener("change", (event) => {
   applyVisibilityFilterValue(event.target.value || "active");
   loadProjects();
@@ -1760,7 +1794,7 @@ function setScoringProfileState(nextState = {}) {
 function setProjectSearchBusy(isBusy) {
   if (!searchButton) return;
   searchButton.disabled = isBusy;
-  searchButton.textContent = isBusy ? t("projectListRefreshing") : t("search");
+  searchButton.textContent = isBusy ? t("keywordSearching") : t("search");
 }
 
 function renderProjectListStatus() {
@@ -1813,6 +1847,18 @@ function projectListLoadingBlock(messageKey = "projectListLoading") {
       <div class="projectLoadingSpinner" aria-hidden="true"></div>
       <div>
         <strong>${escapeHtml(t(messageKey))}</strong>
+      </div>
+    </div>
+  `;
+}
+
+function projectListEmptyBlock() {
+  return `
+    <div class="panel projectEmpty projectFilteredEmpty">
+      <strong>${escapeHtml(t("noFilteredProjects"))}</strong>
+      <div class="projectEmptyActions">
+        ${value("#keyword") ? `<button type="button" class="secondary compactButton" data-clear-keyword>${escapeHtml(t("clearKeyword"))}</button>` : ""}
+        <button type="button" class="secondary compactButton" data-reset-filters>${escapeHtml(t("resetFilters"))}</button>
       </div>
     </div>
   `;
@@ -1976,7 +2022,10 @@ async function loadFilterOptions() {
 
 function setupFilterAutoRefresh() {
   const debouncedLoadProjects = debounce(loadProjects, 260);
-  document.querySelector("#keyword")?.addEventListener("input", debouncedLoadProjects);
+  keywordInput?.addEventListener("input", () => {
+    syncKeywordClearButton();
+    debouncedLoadProjects();
+  });
   [
     "#industry",
     "#stage",
@@ -2010,7 +2059,28 @@ function resetProjectFilters() {
   const sortBy = document.querySelector("#sortBy");
   if (sortBy) sortBy.value = "updated_desc";
   applyVisibilityFilterValue("active");
+  syncKeywordClearButton();
   loadProjects();
+}
+
+function syncKeywordClearButton() {
+  if (!keywordClearButton) return;
+  keywordClearButton.hidden = !value("#keyword");
+}
+
+function hasActiveProjectFilters() {
+  return Boolean(
+    value("#keyword") ||
+      value("#industry") ||
+      value("#stage") ||
+      value("#recommendation") ||
+      value("#country") ||
+      value("#customerType") ||
+      value("#revenueStage") ||
+      value("#riskLevel") ||
+      value("#tag") ||
+      visibilityFilterValueFromState() !== "active",
+  );
 }
 
 function syncHiddenFilterControls() {
@@ -3778,7 +3848,7 @@ function renderProjects(items) {
   renderProjectListStatus();
 
   if (!items.length && projectListState.phase === "loading") {
-    grid.innerHTML = projectListLoadingBlock("projectListLoading");
+    grid.innerHTML = projectListLoadingBlock(hasActiveProjectFilters() ? "keywordSearching" : "projectListLoading");
     return;
   }
 
@@ -3789,7 +3859,17 @@ function renderProjects(items) {
   }
 
   if (!items.length) {
-    grid.innerHTML = `<div class="panel projectEmpty">${t("noProjects")}</div>`;
+    grid.innerHTML = hasActiveProjectFilters()
+      ? projectListEmptyBlock()
+      : `<div class="panel projectEmpty">${t("noProjects")}</div>`;
+    grid.querySelector("[data-clear-keyword]")?.addEventListener("click", () => {
+      if (!keywordInput) return;
+      keywordInput.value = "";
+      syncKeywordClearButton();
+      keywordInput.focus();
+      loadProjects();
+    });
+    grid.querySelector("[data-reset-filters]")?.addEventListener("click", resetProjectFilters);
     return;
   }
 
@@ -3874,21 +3954,30 @@ function cleanProjectDisplayText(value) {
     .trim();
 }
 
-function displayOrFallback(value, fallbackKey = "notParsedYet") {
+function hasCjkDisplayText(value) {
+  return /[\u3400-\u9fff]/.test(String(value || ""));
+}
+
+function localizedProjectDisplayText(value) {
   const text = cleanProjectDisplayText(value);
+  return lang === "zh" || !hasCjkDisplayText(text) ? text : "";
+}
+
+function displayOrFallback(value, fallbackKey = "notParsedYet") {
+  const text = localizedProjectDisplayText(value);
   return isUnknownProjectValue(text) ? t(fallbackKey) : text;
 }
 
 function firstUsefulProjectValue(project, keys = []) {
   for (const key of keys) {
-    const text = cleanProjectDisplayText(project?.[key]);
+    const text = localizedProjectDisplayText(project?.[key]);
     if (!isUnknownProjectValue(text)) return text;
   }
   return "";
 }
 
 function conciseProjectText(value, maxLength = 54) {
-  const text = cleanProjectDisplayText(value)
+  const text = localizedProjectDisplayText(value)
     .split(/[\n\r。；;|]+/)
     .map((part) => part.trim())
     .find(Boolean) || "";
@@ -3924,12 +4013,12 @@ function fallbackProjectName(project) {
 
 function projectDisplayInfo(project) {
   const primary = [project.project_name, project.company_name]
-    .map(cleanProjectDisplayText)
+    .map(localizedProjectDisplayText)
     .find((value) => !isUnknownProjectValue(value));
   const fullName = primary || fallbackProjectName(project);
   const title = conciseProjectText(fullName, 48) || fallbackProjectName(project);
-  const company = cleanProjectDisplayText(project.company_name);
-  const region = cleanProjectDisplayText(project.country_or_region);
+  const company = localizedProjectDisplayText(project.company_name);
+  const region = localizedProjectDisplayText(project.country_or_region);
   const summary = conciseProjectText(project.one_liner || project.one_line_summary || project.summary || project.business_model, 92);
   const sublineParts = [];
   if (!isUnknownProjectValue(company) && company !== fullName) sublineParts.push(company);
@@ -3960,7 +4049,7 @@ function projectRow(project) {
     .filter((value) => value && value !== t("notParsedYet"))
     .join(" / ") || t("notParsedYet");
   const summary = display.summary || conciseProjectText(project.one_line_summary || project.summary || project.business_model, 120);
-  const tags = Array.isArray(project.tags) ? project.tags.filter((tag) => !isUnknownProjectValue(tag)).slice(0, 10) : [];
+  const tags = Array.isArray(project.tags) ? project.tags.filter((tag) => !isUnknownProjectValue(localizedProjectDisplayText(tag))).slice(0, 10) : [];
   const sourceTitle = displayOrFallback(project.document_title || project.file_name, "sourceDocument");
   const scoreValue = Number(project.personal_score ?? project.screening_score);
   const ops = project.ops || {};
