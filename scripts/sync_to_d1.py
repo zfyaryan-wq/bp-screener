@@ -47,6 +47,7 @@ def export_seed(
     include_file_keys: bool = False,
     include_schema: bool = False,
     allow_drop: bool = False,
+    document_id: int | None = None,
 ) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(local_db)
@@ -94,6 +95,9 @@ def export_seed(
         "updated_at",
     ]
     chunk_columns = ["id", "document_id", "page", "chunk_index", "content"]
+    if document_id is not None:
+        project_columns = [column for column in project_columns if column != "id"]
+        chunk_columns = ["document_id", "page", "chunk_index", "content"]
     translation_columns = ["document_id", "lang", "profile_json", "created_at", "updated_at"]
     weight_factor_columns = [
         "id",
@@ -120,8 +124,17 @@ def export_seed(
         if include_transaction:
             handle.write("\n\nBEGIN TRANSACTION;\n")
 
+        if document_id is not None:
+            handle.write(f"DELETE FROM chunks WHERE document_id = {int(document_id)};\n")
+
+        document_where = "WHERE status = 'done'"
+        document_params: tuple[object, ...] = ()
+        if document_id is not None:
+            document_where += " AND id = ?"
+            document_params = (int(document_id),)
+
         for row in conn.execute(
-            """
+            f"""
             SELECT
               id,
               file_name,
@@ -134,9 +147,10 @@ def export_seed(
               created_at,
               updated_at
             FROM documents
-            WHERE status = 'done'
+            {document_where}
             ORDER BY id
-            """
+            """,
+            document_params,
         ):
             payload = dict(row)
             payload["source_url"] = payload.get("source_url") or (
@@ -144,46 +158,59 @@ def export_seed(
             )
             handle.write(row_insert("documents", document_columns, payload) + "\n")
 
-        for row in conn.execute("SELECT * FROM projects ORDER BY id"):
+        project_where = "WHERE document_id = ?" if document_id is not None else ""
+        project_params = (int(document_id),) if document_id is not None else ()
+        for row in conn.execute(f"SELECT * FROM projects {project_where} ORDER BY id", project_params):
             handle.write(row_insert("projects", project_columns, row) + "\n")
 
+        chunk_where = "WHERE document_id = ?" if document_id is not None else ""
+        chunk_limit = "" if document_id is not None else "LIMIT ?"
+        chunk_params: tuple[object, ...] = (int(document_id),) if document_id is not None else (max_chunks,)
         for row in conn.execute(
-            """
-            SELECT id, document_id, page, chunk_index, content
+            f"""
+            SELECT {', '.join(chunk_columns)}
             FROM chunks
+            {chunk_where}
             ORDER BY document_id, chunk_index
-            LIMIT ?
+            {chunk_limit}
             """,
-            (max_chunks,),
+            chunk_params,
         ):
             handle.write(row_insert("chunks", chunk_columns, row) + "\n")
 
+        translation_where = "WHERE document_id = ?" if document_id is not None else ""
+        translation_params = (int(document_id),) if document_id is not None else ()
         for row in conn.execute(
-            """
+            f"""
             SELECT document_id, lang, profile_json, created_at, updated_at
             FROM project_translations
+            {translation_where}
             ORDER BY document_id, lang
-            """
+            """,
+            translation_params,
         ):
             handle.write(row_insert("project_translations", translation_columns, row) + "\n")
 
-        for row in conn.execute(
-            """
-            SELECT id, key, name, description, category, scope, owner,
-                   created_at, updated_at, source_prompt, metadata_json
-            FROM weight_factors
-            ORDER BY id
-            """
-        ):
-            handle.write(row_insert("weight_factors", weight_factor_columns, row) + "\n")
+        if document_id is None:
+            for row in conn.execute(
+                """
+                SELECT id, key, name, description, category, scope, owner,
+                       created_at, updated_at, source_prompt, metadata_json
+                FROM weight_factors
+                ORDER BY id
+                """
+            ):
+                handle.write(row_insert("weight_factors", weight_factor_columns, row) + "\n")
 
         if include_transaction:
             handle.write("COMMIT;\n")
 
 
-def execute_seed(database_name: str, output_path: Path) -> None:
+def execute_seed(database_name: str, output_path: Path, remote: bool = True) -> None:
+    command = ["npx", "wrangler", "d1", "execute", database_name, "--file", str(output_path)]
+    command.append("--remote" if remote else "--local")
     subprocess.run(
-        ["npx", "wrangler", "d1", "execute", database_name, "--remote", "--file", str(output_path)],
+        command,
         check=True,
         cwd=ROOT,
     )
@@ -201,6 +228,8 @@ def main() -> None:
     parser.add_argument("--reset-schema", action="store_true", help="Include the full schema file, including destructive DROP TABLE lines.")
     parser.add_argument("--allow-drop", action="store_true", help="Required with --reset-schema and --execute to run DROP TABLE statements.")
     parser.add_argument("--execute", action="store_true", help="Run wrangler d1 execute after exporting.")
+    parser.add_argument("--local", action="store_true", help="Execute against local Wrangler D1 when used with --execute.")
+    parser.add_argument("--document-id", type=int, help="Export only one parsed document and its project/chunks/translations.")
     parser.add_argument("--database", default="bp-screener", help="Cloudflare D1 database name.")
     args = parser.parse_args()
     if args.reset_schema and not args.allow_drop:
@@ -215,6 +244,7 @@ def main() -> None:
         args.include_file_keys,
         include_schema=args.include_schema or args.reset_schema,
         allow_drop=args.allow_drop and args.reset_schema,
+        document_id=args.document_id,
     )
     print(f"Exported D1 seed SQL to {args.output}")
 
@@ -222,7 +252,7 @@ def main() -> None:
         output_sql = args.output.read_text(encoding="utf-8")
         if "DROP TABLE" in output_sql.upper() and not args.allow_drop:
             raise SystemExit("Refusing to execute SQL containing DROP TABLE without --allow-drop.")
-        execute_seed(args.database, args.output)
+        execute_seed(args.database, args.output, remote=not args.local)
 
 
 if __name__ == "__main__":

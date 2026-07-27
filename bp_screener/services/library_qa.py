@@ -9,7 +9,8 @@ from typing import Any
 from bp_screener.config import LLM_MAX_TOKENS, RAG_QA_CACHE_ENABLED
 from bp_screener.db import get_library_qa_cache, save_library_qa_cache
 from bp_screener.llm_client import chat_completion
-from bp_screener.search import hybrid_search_chunks, list_projects
+from bp_screener.search import list_projects
+from bp_screener.services.rag import format_sources, retrieve_chunks
 
 
 SYSTEM_PROMPT = """You are a BP knowledge-base assistant for a small student investment review team.
@@ -93,8 +94,8 @@ def qa_cache_key(question: str, lang: str, limit: int) -> str:
 
 
 def build_library_evidence(conn: sqlite3.Connection, question: str, limit: int = 12) -> list[dict[str, Any]]:
-    sources = hybrid_search_chunks(conn, question, limit=limit)
-    evidence = [format_chunk_source(index + 1, source) for index, source in enumerate(sources)]
+    sources = retrieve_chunks(conn, question, limit=limit)
+    evidence = format_sources(sources)
     seen_documents = {int(item["document_id"]) for item in evidence if item.get("document_id")}
 
     profile_sources = structured_project_sources(conn, question, limit=max(4, limit // 2))
@@ -108,17 +109,6 @@ def build_library_evidence(conn: sqlite3.Connection, question: str, limit: int =
         if len(evidence) >= limit:
             break
     return evidence[:limit]
-
-
-def format_chunk_source(source_id: int, source: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "source_id": source_id,
-        "document_id": source.get("document_id"),
-        "file_name": source.get("file_name"),
-        "page": source.get("page"),
-        "match_type": source.get("match_type"),
-        "snippet": source.get("snippet", ""),
-    }
 
 
 def structured_project_sources(conn: sqlite3.Connection, question: str, limit: int = 6) -> list[dict[str, Any]]:

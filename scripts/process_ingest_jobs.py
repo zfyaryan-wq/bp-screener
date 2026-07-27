@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
 import shutil
 import subprocess
 import sys
@@ -10,7 +12,12 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DATABASE = "bp-screener"
+sys.path.insert(0, str(ROOT))
+
+from scripts.sync_to_d1 import DEFAULT_LOCAL_DB, DEFAULT_OUTPUT, DEFAULT_SCHEMA, execute_seed, export_seed
+
+DEFAULT_DATABASE = os.getenv("CLOUDFLARE_D1_DATABASE", "bp-screener")
+DEFAULT_DOWNLOAD_DIR = ROOT / "data" / "inbox" / "uploads"
 JOB_STATUSES = {"queued", "processing", "done", "failed"}
 
 
@@ -157,6 +164,11 @@ WHERE id IN ({document_ids});
     return [IngestJob(**row) for row in client.execute(job_select_sql(f"j.id IN ({ids})", limit))]
 
 
+def claim_one_job(client: D1Client, apply: bool) -> IngestJob | None:
+    jobs = claim_jobs(client, 1, apply)
+    return jobs[0] if jobs else None
+
+
 def update_job_status(client: D1Client, job_id: int, status: str, apply: bool, error_message: str = "") -> None:
     if status not in {"queued", "done", "failed"}:
         raise SystemExit("mark-status only supports queued, done, or failed.")
@@ -187,6 +199,133 @@ WHERE id = {int(row[0]["document_id"])};
     client.execute(sql)
 
 
+def safe_file_name(file_name: str, fallback: str = "upload") -> str:
+    name = Path(file_name or fallback).name.strip() or fallback
+    return re.sub(r"[^A-Za-z0-9._() -]+", "_", name)
+
+
+def download_path_for_job(job: IngestJob, download_dir: Path) -> Path:
+    return download_dir / f"doc-{job.document_id}-job-{job.id}-{safe_file_name(job.file_name)}"
+
+
+def download_job_file(job: IngestJob, download_dir: Path) -> Path:
+    from bp_screener.feishu import FeishuClient
+
+    platform = (job.source_platform or "").strip().lower()
+    if platform not in {"feishu", "lark"}:
+        raise RuntimeError(
+            f"Unsupported source_platform={job.source_platform!r}. "
+            "Only Feishu/Lark Drive uploads are supported by process-one."
+        )
+    if not job.source_external_id:
+        raise RuntimeError("Missing source_external_id Feishu file token.")
+    target_path = download_path_for_job(job, download_dir)
+    FeishuClient().download_file(job.source_external_id, target_path)
+    if not target_path.exists() or target_path.stat().st_size <= 0:
+        raise RuntimeError(f"Downloaded file is empty: {target_path}")
+    return target_path
+
+
+def ensure_local_document_row(job: IngestJob, file_path: Path, local_db: Path) -> None:
+    from bp_screener.db import connect
+
+    resolved = file_path.resolve()
+    with connect(local_db) as conn:
+        conn.execute(
+            """
+            INSERT INTO documents(
+              id, file_name, file_path, file_size, source_platform, source_external_id,
+              source_url, status, error, deleted_at, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'processing', NULL, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              file_name = excluded.file_name,
+              file_path = excluded.file_path,
+              file_size = excluded.file_size,
+              source_platform = excluded.source_platform,
+              source_external_id = excluded.source_external_id,
+              source_url = excluded.source_url,
+              status = 'processing',
+              error = NULL,
+              deleted_at = NULL,
+              updated_at = CURRENT_TIMESTAMP
+            """,
+            (
+                int(job.document_id),
+                job.file_name,
+                str(resolved),
+                resolved.stat().st_size,
+                job.source_platform,
+                job.source_external_id,
+                job.source_url,
+            ),
+        )
+        conn.commit()
+
+
+def process_job(
+    client: D1Client,
+    job: IngestJob,
+    database: str,
+    local_db: Path,
+    download_dir: Path,
+    sync_output: Path,
+    remote: bool,
+    use_llm: bool,
+) -> None:
+    from bp_screener.ingest import ingest_path
+
+    file_path = download_job_file(job, download_dir)
+    ensure_local_document_row(job, file_path, local_db)
+    ok, failed = ingest_path(file_path, use_llm=use_llm, force=True)
+    if failed or ok < 1:
+        raise RuntimeError(f"Local ingest failed for {file_path.name}. ok={ok} failed={failed}")
+
+    export_seed(
+        local_db,
+        DEFAULT_SCHEMA,
+        sync_output,
+        max_chunks=5000,
+        include_transaction=False,
+        document_id=job.document_id,
+    )
+    execute_seed(database, sync_output, remote=remote)
+    update_job_status(client, job.id, "done", apply=True)
+
+
+def process_one(args: argparse.Namespace, client: D1Client) -> None:
+    job = claim_one_job(client, apply=args.apply)
+    if not job:
+        print("No queued ingest job found.")
+        return
+
+    if not args.apply:
+        planned_path = download_path_for_job(job, args.download_dir)
+        print("Dry run: would process one queued ingest job. Re-run with --apply to claim and mutate D1.")
+        print_jobs([job])
+        print(f"Would download to: {planned_path}")
+        print(f"Would ingest into local SQLite: {args.local_db}")
+        print(f"Would export document_id={job.document_id} to: {args.sync_output}")
+        print(f"Would execute SQL against {'remote' if not args.local else 'local'} D1 database: {args.database}")
+        return
+
+    try:
+        process_job(
+            client,
+            job,
+            database=args.database,
+            local_db=args.local_db,
+            download_dir=args.download_dir,
+            sync_output=args.sync_output,
+            remote=not args.local,
+            use_llm=not args.no_llm,
+        )
+    except Exception as exc:
+        update_job_status(client, job.id, "failed", apply=True, error_message=str(exc))
+        raise
+    print(f"Job {job.id} processed and marked done.")
+
+
 def print_jobs(jobs: list[IngestJob]) -> None:
     if not jobs:
         print("No ingest jobs found.")
@@ -213,14 +352,22 @@ def print_counts(rows: list[dict[str, Any]]) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Operate D1 ingest_jobs for uploaded BPs. This first version only lists, claims, "
-            "and marks job state; Feishu file download and structured upsert are intentionally "
-            "left as the next integration step to avoid hard-coded secrets."
+            "Operate D1 ingest_jobs for uploaded BPs. process-one/run-once claims one queued "
+            "Feishu upload, downloads it, ingests it locally, and syncs parsed rows back to D1."
         )
     )
-    parser.add_argument("command", choices=["list", "status", "claim", "mark-status"], nargs="?", default="list")
+    parser.add_argument(
+        "command",
+        choices=["list", "status", "claim", "mark-status", "process-one", "run-once"],
+        nargs="?",
+        default="list",
+    )
     parser.add_argument("--database", default=DEFAULT_DATABASE)
     parser.add_argument("--local", action="store_true", help="Use local Wrangler D1 instead of remote D1.")
+    parser.add_argument("--local-db", type=Path, default=DEFAULT_LOCAL_DB, help="Local SQLite staging database.")
+    parser.add_argument("--download-dir", type=Path, default=DEFAULT_DOWNLOAD_DIR, help="Directory for downloaded uploads.")
+    parser.add_argument("--sync-output", type=Path, default=DEFAULT_OUTPUT, help="Temporary SQL file for D1 upsert.")
+    parser.add_argument("--no-llm", action="store_true", help="Parse with heuristic extraction only.")
     parser.add_argument("--limit", type=int, default=10)
     parser.add_argument("--status", action="append", default=[], help="Filter list by status; can be repeated.")
     parser.add_argument("--job-id", type=int, help="Required for mark-status.")
@@ -231,6 +378,10 @@ def main() -> None:
     args = parser.parse_args()
 
     client = D1Client(args.database, remote=not args.local)
+
+    if args.command in {"process-one", "run-once"}:
+        process_one(args, client)
+        return
 
     if args.command == "status":
         rows = status_counts(client)

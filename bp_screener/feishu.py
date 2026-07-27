@@ -171,6 +171,24 @@ class FeishuClient:
         listed = next((file for file in self.list_folder_files(folder_token, recursive=False) if file.token == token), None)
         return listed or FeishuFile(token=token, name=path.name, type=path.suffix.lstrip("."), url="", parent_token=folder_token)
 
+    def download_file(self, file_token: str, output_path: Path) -> Path:
+        if not file_token:
+            raise FeishuApiError("Feishu file token is required for download.")
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        url = f"{FEISHU_API_BASE}/drive/v1/files/{urllib.parse.quote(file_token)}/download"
+        request = urllib.request.Request(
+            url,
+            method="GET",
+            headers={"Authorization": f"Bearer {self.tenant_access_token}"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=180) as response:
+                output_path.write_bytes(response.read())
+        except urllib.error.HTTPError as exc:
+            response_body = exc.read().decode("utf-8", errors="replace")
+            raise FeishuApiError(f"Feishu file download failed: {exc.code} {response_body}") from exc
+        return output_path
+
     def list_bitable_records(self, app_token: str, table_id: str, page_size: int = 100) -> list[dict[str, Any]]:
         result: list[dict[str, Any]] = []
         page_token = ""
