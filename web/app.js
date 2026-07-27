@@ -289,6 +289,9 @@ const labels = {
     bpPreview: "BP Preview",
     openInNew: "Open in new window",
     feishuEmbedHint: "Feishu may block iframe embedding. If the preview is blank, open it in a new window.",
+    openProjectRow: "Open details",
+    openProjectRowHint: "Click row or project name to open details",
+    projectActionFailed: "Update failed. Please try again.",
     teamPresence: "Team status",
     commentsQuestions: "Comments & Questions",
     addComment: "Add comment",
@@ -652,6 +655,9 @@ const labels = {
     bpPreview: "BP 预览",
     openInNew: "新窗口打开",
     feishuEmbedHint: "飞书可能禁止 iframe 嵌入；如果预览空白，请用新窗口打开。",
+    openProjectRow: "打开详情",
+    openProjectRowHint: "点击行或项目名打开详情",
+    projectActionFailed: "更新失败，请重试。",
     teamPresence: "团队状态",
     commentsQuestions: "评论与问题",
     addComment: "添加评论",
@@ -743,6 +749,9 @@ localStorage.removeItem("bp-screener-access-code");
 let projects = [];
 let projectListRequestSeq = 0;
 let projectListState = { phase: "idle", message: "", error: "" };
+let projectActionStatusTimer = 0;
+const projectActionRequests = new Set();
+const expandedProjectRows = new Set();
 let defaultFactors = [];
 let factorPools = { public: [], personal: [], system: [] };
 let selectedFactors = [];
@@ -2046,6 +2055,7 @@ function visibleProjectItems(items = []) {
   return (items || []).filter((project) => {
     if (hideDiscussedProjects && isDiscussedProject(project)) return false;
     if (hideNotInterestedProjects && isNotInterestedProject(project)) return false;
+    if (highlightOnlyProjects && !project.ops?.highlights?.highlighted_by_me && !project.ops?.highlights?.count) return false;
     return true;
   });
 }
@@ -3788,25 +3798,46 @@ function renderProjects(items) {
     ${items.map(projectRow).join("")}
   `;
   grid.querySelectorAll("[data-document-id]").forEach((button) => {
-    button.addEventListener("click", () => showProject(button.dataset.documentId));
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      showProject(button.dataset.documentId);
+    });
   });
   grid.querySelectorAll("[data-file-id]").forEach((button) => {
-    button.addEventListener("click", () => openSourceFile(button.dataset.fileId, button.dataset.fileUrl));
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openSourceFile(button.dataset.fileId, button.dataset.fileUrl);
+    });
   });
   grid.querySelectorAll("[data-shortlist-id]").forEach((button) => {
-    button.addEventListener("click", () => addToShortlist(Number(button.dataset.shortlistId)));
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      addToShortlist(Number(button.dataset.shortlistId));
+    });
   });
   grid.querySelectorAll("[data-nominate-id]").forEach((button) => {
-    button.addEventListener("click", () => nominateProject(Number(button.dataset.nominateId)));
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      nominateProject(Number(button.dataset.nominateId));
+    });
   });
   grid.querySelectorAll("[data-project-reaction]").forEach((button) => {
-    button.addEventListener("click", () => toggleProjectReaction(Number(button.dataset.reactionProjectId), button.dataset.projectReaction));
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleProjectReaction(Number(button.dataset.reactionProjectId), button.dataset.projectReaction);
+    });
   });
   grid.querySelectorAll("[data-project-highlight]").forEach((button) => {
-    button.addEventListener("click", () => toggleProjectHighlight(Number(button.dataset.highlightProjectId), button.dataset.projectHighlight === "true"));
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleProjectHighlight(Number(button.dataset.highlightProjectId), button.dataset.projectHighlight === "true");
+    });
   });
   grid.querySelectorAll("[data-project-expand]").forEach((button) => {
-    button.addEventListener("click", () => toggleProjectRowDetails(button));
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleProjectRowDetails(button);
+    });
   });
   grid.querySelectorAll("[data-project-row]").forEach((row) => {
     row.addEventListener("click", (event) => {
@@ -3951,14 +3982,16 @@ function projectRow(project) {
   const tractionSummary = firstUsefulProjectValue(project, ["traction"]);
   const riskSummary = firstUsefulProjectValue(project, ["risks"]);
   const rowDetailsId = `project-row-details-${Number(project.document_id || 0)}`;
+  const rowOpenLabel = `${t("openProjectRow")}: ${display.fullName}`;
+  const isExpanded = expandedProjectRows.has(Number(project.document_id || 0));
 
   return `
-    <article class="projectRow ${highlights.highlighted_by_me ? "highlightedByMe" : highlights.count ? "highlightedByTeam" : ""}" role="row" data-project-row="${project.document_id}">
+    <article class="projectRow ${highlights.highlighted_by_me ? "highlightedByMe" : highlights.count ? "highlightedByTeam" : ""}" role="row" data-project-row="${project.document_id}" title="${escapeHtml(`${rowOpenLabel} · ${t("openProjectRowHint")}`)}">
       <div class="projectCell libraryNumberCell projectStackCell" data-label="${escapeHtml(t("libraryNumber"))}" title="${escapeHtml(t("libraryNumberHint"))}">
         <strong>${escapeHtml(libraryNumberLabel)}</strong>
       </div>
       <div class="projectMain" data-label="${escapeHtml(t("projectName"))}">
-        <button type="button" class="projectOpenButton" data-document-id="${project.document_id}" title="${escapeHtml(t("view"))}: ${escapeHtml(display.fullName)}">
+        <button type="button" class="projectOpenButton" data-document-id="${project.document_id}" ${buttonAttrs(`${rowOpenLabel} · ${t("openProjectRowHint")}`)}>
           <span class="projectOpenName" title="${escapeHtml(display.fullName)}">${escapeHtml(display.title)}</span>
           ${display.subline ? `<small title="${escapeHtml(display.subline)}">${escapeHtml(display.subline)}</small>` : ""}
         </button>
@@ -3978,11 +4011,10 @@ function projectRow(project) {
         <strong title="${escapeHtml(`${t("recommendation")}: ${recommendation}`)}">${escapeHtml(riskLevel)}</strong>
       </div>
       <div class="rowActions" data-label="${escapeHtml(t("actions"))}">
-        <button type="button" class="secondary projectExpandButton" data-project-expand="${project.document_id}" aria-expanded="false" aria-controls="${escapeHtml(rowDetailsId)}" ${buttonAttrs(t("profileDetails"))}>${iconLabel("chevronRight", t("profileDetails"))}</button>
-        <button data-document-id="${project.document_id}" ${buttonAttrs(t("view"))}>${iconLabel("chevronRight", t("view"))}</button>
+        <button type="button" class="secondary projectExpandButton" data-project-expand="${project.document_id}" aria-expanded="${isExpanded ? "true" : "false"}" aria-controls="${escapeHtml(rowDetailsId)}" ${buttonAttrs(t("profileDetails"))}>${iconLabel("chevronRight", t("profileDetails"))}</button>
         ${renderProjectHighlightButton(project.ops, project.document_id)}
       </div>
-      <div id="${escapeHtml(rowDetailsId)}" class="projectRowDetails" hidden>
+      <div id="${escapeHtml(rowDetailsId)}" class="projectRowDetails" ${isExpanded ? "" : "hidden"}>
         <p class="projectRowSummary">${escapeHtml(summary || t("noSummaryYet"))}</p>
         <div class="projectRowDetailGrid">
           <section>
@@ -4033,8 +4065,16 @@ function toggleProjectRowDetails(button) {
   const details = document.getElementById(button.getAttribute("aria-controls") || "");
   if (!details) return;
   const expanded = button.getAttribute("aria-expanded") === "true";
+  const documentId = Number(button.dataset.projectExpand || 0);
   button.setAttribute("aria-expanded", expanded ? "false" : "true");
   details.hidden = expanded;
+  if (documentId) {
+    if (expanded) {
+      expandedProjectRows.delete(documentId);
+    } else {
+      expandedProjectRows.add(documentId);
+    }
+  }
 }
 
 async function showProject(documentId) {
@@ -4338,12 +4378,14 @@ function renderProjectReactionButtons(ops = {}, documentId = "", options = {}) {
   const dislikeActors = sortTeamActors(dislikes.actors || []);
   const likeTitle = `${likes.liked_by_me ? t("unlike") : t("like")} · ${t("likedBy")}: ${likeActors.map(userDisplayName).join(", ") || "0"}`;
   const dislikeTitle = `${dislikes.disliked_by_me ? t("undislike") : t("dislike")} · ${t("dislikedBy")}: ${dislikeActors.map(userDisplayName).join(", ") || "0"}`;
+  const likePending = isProjectActionPending(documentId, "reaction:like");
+  const dislikePending = isProjectActionPending(documentId, "reaction:dislike");
   return `
     <div class="${wrapperClass}" aria-label="${escapeHtml(t("likes"))}">
-      <button type="button" class="${likes.liked_by_me ? "active reactionButton likeButton" : "secondary reactionButton likeButton"}" data-reaction-project-id="${documentId}" data-project-reaction="like" title="${escapeHtml(likeTitle)}" aria-label="${escapeHtml(likeTitle)}">
+      <button type="button" class="${likes.liked_by_me ? "active reactionButton likeButton" : "secondary reactionButton likeButton"} ${likePending ? "loading" : ""}" data-reaction-project-id="${documentId}" data-project-reaction="like" title="${escapeHtml(likeTitle)}" aria-label="${escapeHtml(likeTitle)}" aria-busy="${likePending ? "true" : "false"}" ${likePending ? "disabled" : ""}>
         ${icon("thumbsUp")}<strong>${Number(likes.count || likeActors.length || 0)}</strong>${renderReactionActors(likeActors)}
       </button>
-      <button type="button" class="${dislikes.disliked_by_me ? "active reactionButton dislikeButton" : "secondary reactionButton dislikeButton"}" data-reaction-project-id="${documentId}" data-project-reaction="dislike" title="${escapeHtml(dislikeTitle)}" aria-label="${escapeHtml(dislikeTitle)}">
+      <button type="button" class="${dislikes.disliked_by_me ? "active reactionButton dislikeButton" : "secondary reactionButton dislikeButton"} ${dislikePending ? "loading" : ""}" data-reaction-project-id="${documentId}" data-project-reaction="dislike" title="${escapeHtml(dislikeTitle)}" aria-label="${escapeHtml(dislikeTitle)}" aria-busy="${dislikePending ? "true" : "false"}" ${dislikePending ? "disabled" : ""}>
         ${icon("thumbsDown")}<strong>${Number(dislikes.count || dislikeActors.length || 0)}</strong>${renderReactionActors(dislikeActors)}
       </button>
     </div>
@@ -4357,8 +4399,9 @@ function renderProjectHighlightButton(ops = {}, documentId = "", options = {}) {
   const label = active ? t("unhighlight") : t("highlight");
   const title = `${label} · ${t("highlightedBy")}: ${actors.map(userDisplayName).join(", ") || "0"}`;
   const compactClass = options.compact ? " compactHighlightButton" : "";
+  const pending = isProjectActionPending(documentId, "highlight");
   return `
-    <button type="button" class="${active ? `active reactionButton highlightButton${compactClass}` : `secondary reactionButton highlightButton${compactClass}`}" data-highlight-project-id="${documentId}" data-project-highlight="${active ? "false" : "true"}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
+    <button type="button" class="${active ? `active reactionButton highlightButton${compactClass}` : `secondary reactionButton highlightButton${compactClass}`} ${pending ? "loading" : ""}" data-highlight-project-id="${documentId}" data-project-highlight="${active ? "false" : "true"}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}" aria-busy="${pending ? "true" : "false"}" ${pending ? "disabled" : ""}>
       ${icon("highlight")}<span>${escapeHtml(label)}</span>${actors.length ? renderReactionActors(actors, 3) : ""}
     </button>
   `;
@@ -4621,44 +4664,176 @@ async function toggleProjectLike(documentId) {
   return toggleProjectReaction(documentId, "like");
 }
 
+function projectActionKey(documentId, action) {
+  return `${Number(documentId || 0)}:${action}`;
+}
+
+function isProjectActionPending(documentId, action) {
+  return projectActionRequests.has(projectActionKey(documentId, action));
+}
+
+function beginProjectAction(documentId, action) {
+  const key = projectActionKey(documentId, action);
+  if (projectActionRequests.has(key)) return false;
+  projectActionRequests.add(key);
+  return true;
+}
+
+function finishProjectAction(documentId, action) {
+  projectActionRequests.delete(projectActionKey(documentId, action));
+}
+
+function cloneProjectOps(ops, documentId = 0) {
+  const fallback = {
+    document_id: Number(documentId || 0),
+    actor: currentUser || "",
+    global_status: { status: "new", note: "", set_by: "", updated_at: "" },
+    personal_marks: [],
+    my_marks: [],
+    votes: { support: 0, oppose: 0, neutral: 0 },
+    my_vote: "",
+    shortlisted_by: [],
+    in_my_shortlist: false,
+    my_shortlist_position: 0,
+    nominated_by: [],
+    highlights: { count: 0, actors: [], highlighted_by_me: false },
+    likes: { count: 0, actors: [], liked_by_me: false },
+    dislikes: { count: 0, actors: [], disliked_by_me: false },
+  };
+  return JSON.parse(JSON.stringify({ ...fallback, ...(ops || {}) }));
+}
+
+function currentProjectOps(documentId) {
+  const project = projects.find((item) => Number(item.document_id) === Number(documentId));
+  return cloneProjectOps(project?.ops || selectedProject?.ops, documentId);
+}
+
+function updateActorBucket(bucket = {}, activeKey, active) {
+  const actor = currentUser || "";
+  const actors = sortTeamActors((bucket.actors || []).filter((item) => item !== actor));
+  if (active && actor) actors.push(actor);
+  const nextActors = sortTeamActors(actors);
+  return {
+    ...bucket,
+    actors: nextActors,
+    count: nextActors.length,
+    [activeKey]: Boolean(active),
+  };
+}
+
+function optimisticHighlightOps(previousOps, highlighted) {
+  const nextOps = cloneProjectOps(previousOps, previousOps?.document_id);
+  nextOps.highlights = updateActorBucket(nextOps.highlights, "highlighted_by_me", highlighted);
+  const marks = new Set(nextOps.my_marks || []);
+  if (highlighted) {
+    marks.add("highlight");
+  } else {
+    marks.delete("highlight");
+  }
+  nextOps.my_marks = [...marks];
+  return nextOps;
+}
+
+function optimisticReactionOps(previousOps, reaction = "like") {
+  const nextOps = cloneProjectOps(previousOps, previousOps?.document_id);
+  const normalizedReaction = reaction === "dislike" ? "dislike" : "like";
+  const activeKey = normalizedReaction === "dislike" ? "disliked_by_me" : "liked_by_me";
+  const currentBucket = normalizedReaction === "dislike" ? nextOps.dislikes : nextOps.likes;
+  const willActivate = !Boolean(currentBucket?.[activeKey]);
+  nextOps.likes = updateActorBucket(nextOps.likes, "liked_by_me", false);
+  nextOps.dislikes = updateActorBucket(nextOps.dislikes, "disliked_by_me", false);
+  if (willActivate) {
+    if (normalizedReaction === "dislike") {
+      nextOps.dislikes = updateActorBucket(nextOps.dislikes, "disliked_by_me", true);
+    } else {
+      nextOps.likes = updateActorBucket(nextOps.likes, "liked_by_me", true);
+    }
+  }
+  return nextOps;
+}
+
+function showProjectActionError(message = "") {
+  window.clearTimeout(projectActionStatusTimer);
+  projectListState = {
+    phase: "actionError",
+    message: message || t("projectActionFailed"),
+    error: "",
+  };
+  renderProjectListStatus();
+  projectActionStatusTimer = window.setTimeout(() => {
+    if (projectListState.phase === "actionError") {
+      setProjectListState({ phase: "idle" });
+    }
+  }, 3600);
+}
+
 async function toggleProjectReaction(documentId, reaction = "like") {
   if (!documentId) return;
-  const response = await apiFetch(`/api/projects/${documentId}/like`, {
-    method: "POST",
-    body: JSON.stringify({ reaction }),
-  });
-  if (!response) return;
-  const data = await response.json().catch(() => ({}));
-  if (data.ops) {
-    updateProjectOpsState(Number(documentId), data.ops);
+  const normalizedReaction = reaction === "dislike" ? "dislike" : "like";
+  const action = `reaction:${normalizedReaction}`;
+  if (!beginProjectAction(documentId, action)) return;
+  const previousOps = currentProjectOps(documentId);
+  applyProjectOpsState(Number(documentId), optimisticReactionOps(previousOps, normalizedReaction));
+  try {
+    const response = await apiFetch(`/api/projects/${documentId}/like`, {
+      method: "POST",
+      body: JSON.stringify({ reaction: normalizedReaction }),
+    });
+    if (!response) throw new Error(t("projectActionFailed"));
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.error) throw new Error(data.error || t("projectActionFailed"));
+    if (data.ops) {
+      applyProjectOpsState(Number(documentId), data.ops);
+    }
+  } catch (error) {
+    applyProjectOpsState(Number(documentId), previousOps);
+    showProjectActionError(error?.message || t("projectActionFailed"));
+  } finally {
+    finishProjectAction(documentId, action);
+    renderProjectList();
   }
 }
 
 async function toggleProjectHighlight(documentId, highlighted) {
   if (!documentId) return;
-  const response = await apiFetch(`/api/projects/${documentId}/marks`, {
-    method: "POST",
-    body: JSON.stringify({ action: "highlight", highlighted: Boolean(highlighted), metadata: clientMetadata() }),
-  });
-  if (!response) return;
-  const data = await response.json().catch(() => ({}));
-  if (data.ops) {
-    updateProjectOpsState(Number(documentId), data.ops);
-  }
-  if (highlightOnlyProjects && !highlighted) {
-    await loadProjects();
+  if (!beginProjectAction(documentId, "highlight")) return;
+  const previousOps = currentProjectOps(documentId);
+  applyProjectOpsState(Number(documentId), optimisticHighlightOps(previousOps, Boolean(highlighted)));
+  try {
+    const response = await apiFetch(`/api/projects/${documentId}/marks`, {
+      method: "POST",
+      body: JSON.stringify({ action: "highlight", highlighted: Boolean(highlighted), metadata: clientMetadata() }),
+    });
+    if (!response) throw new Error(t("projectActionFailed"));
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.error) throw new Error(data.error || t("projectActionFailed"));
+    if (data.ops) {
+      applyProjectOpsState(Number(documentId), data.ops);
+    }
+  } catch (error) {
+    applyProjectOpsState(Number(documentId), previousOps);
+    showProjectActionError(error?.message || t("projectActionFailed"));
+  } finally {
+    finishProjectAction(documentId, "highlight");
+    renderProjectList();
   }
 }
 
-function updateProjectOpsState(documentId, ops) {
+function applyProjectOpsState(documentId, ops) {
   const index = projects.findIndex((item) => Number(item.document_id) === Number(documentId));
   if (index >= 0) projects[index] = { ...projects[index], ops };
   if (Number(selectedDocumentId) === Number(documentId) && selectedProject) {
     selectedProject.ops = ops;
     renderProjectOps(selectedProject);
-    loadSimilarProjects(documentId);
   }
   renderProjectList();
+}
+
+function updateProjectOpsState(documentId, ops) {
+  applyProjectOpsState(documentId, ops);
+  if (Number(selectedDocumentId) === Number(documentId) && selectedProject) {
+    loadSimilarProjects(documentId);
+  }
 }
 
 async function addToShortlist(documentId) {

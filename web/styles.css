@@ -20,9 +20,20 @@
   box-sizing: border-box;
 }
 
+html {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
-  overflow-x: hidden;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
   background:
     radial-gradient(circle at 12% -10%, rgba(34, 197, 94, 0.16), transparent 34%),
     radial-gradient(circle at 90% 0%, rgba(20, 184, 166, 0.1), transparent 28%),
@@ -551,11 +562,14 @@ input.authErrorFlash {
 .workbenchShell {
   display: grid;
   width: calc(100% - (var(--page-gutter) * 2));
+  height: 100%;
+  min-height: 0;
   max-width: none;
-  margin: 14px auto 64px;
+  margin: 10px auto 0;
   grid-template-columns: minmax(230px, 0.18fr) minmax(560px, 1fr) minmax(310px, 0.32fr);
   gap: 16px;
-  align-items: start;
+  align-items: stretch;
+  overflow: hidden;
 }
 
 .workbenchShell.scoringProfileNavLayout {
@@ -685,8 +699,9 @@ input.authErrorFlash {
 }
 
 .centerRail {
-  grid-template-rows: minmax(0, auto) minmax(420px, 1fr);
-  height: calc(100dvh - 32px);
+  grid-template-rows: minmax(0, auto) minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -1495,7 +1510,7 @@ button.secondary:hover {
   align-content: start;
   min-height: max-content;
   margin-bottom: 0;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .libraryOverviewStack {
@@ -3382,7 +3397,7 @@ button.bpLeaderboardCard:focus-visible {
   display: grid;
   align-content: start;
   gap: 0;
-  min-height: clamp(420px, 58dvh, 760px);
+  min-height: 0;
   min-width: 0;
   max-width: 100%;
   overflow-x: hidden;
@@ -3423,8 +3438,9 @@ button.bpLeaderboardCard:focus-visible {
 
 .bpListPanel {
   display: grid;
-  grid-template-rows: auto minmax(360px, 1fr);
-  min-height: clamp(520px, 68dvh, 860px);
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -3479,6 +3495,14 @@ button.bpLeaderboardCard:focus-visible {
 }
 
 .projectListStatus.error {
+  border-color: rgba(248, 113, 113, 0.42);
+  color: #fecaca;
+  background:
+    radial-gradient(circle at top left, rgba(248, 113, 113, 0.12), transparent 36%),
+    rgba(2, 8, 8, 0.58);
+}
+
+.projectListStatus.actionError {
   border-color: rgba(248, 113, 113, 0.42);
   color: #fecaca;
   background:
@@ -3547,12 +3571,12 @@ button.bpLeaderboardCard:focus-visible {
   display: grid;
   grid-template-columns:
     40px
-    minmax(150px, 1.52fr)
-    minmax(92px, 0.78fr)
+    minmax(170px, 1.74fr)
+    minmax(108px, 0.86fr)
     minmax(108px, 0.78fr)
     72px
     minmax(74px, 0.52fr)
-    100px;
+    62px;
   gap: 0;
   align-items: center;
   width: 100%;
@@ -3603,7 +3627,7 @@ button.bpLeaderboardCard:focus-visible {
   padding: 0;
   background: transparent;
   box-shadow: none;
-  cursor: default;
+  cursor: pointer;
   transition:
     background 160ms ease,
     border-color 160ms ease;
@@ -3640,6 +3664,10 @@ button.bpLeaderboardCard:focus-visible {
 .projectRow:hover {
   border-color: rgba(74, 222, 128, 0.24);
   background: rgba(34, 197, 94, 0.08);
+}
+
+.projectRow:focus-within {
+  background: rgba(34, 197, 94, 0.06);
 }
 
 .libraryNumberCell strong {
@@ -3925,6 +3953,7 @@ button.bpLeaderboardCard:focus-visible {
   min-height: 48px;
   padding: 4px 8px;
   overflow: hidden;
+  cursor: default;
   white-space: nowrap;
 }
 
@@ -3938,6 +3967,17 @@ button.bpLeaderboardCard:focus-visible {
   font-size: 11px;
   line-height: 1.2;
   box-shadow: none;
+  white-space: nowrap;
+}
+
+.rowActions .highlightButton span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
   white-space: nowrap;
 }
 
@@ -4162,6 +4202,22 @@ button.bpLeaderboardCard:focus-visible {
 
 .reactionButton.active strong {
   color: #052e16;
+}
+
+.reactionButton.loading {
+  position: relative;
+  opacity: 0.72;
+}
+
+.reactionButton.loading::after {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  content: "";
+  animation: projectLoadingSpin 700ms linear infinite;
 }
 
 .dislikeButton.active {
@@ -5080,12 +5136,12 @@ dialog::backdrop {
   .projectRow {
     grid-template-columns:
       40px
-      minmax(132px, 1.45fr)
-      minmax(86px, 0.74fr)
+      minmax(150px, 1.68fr)
+      minmax(96px, 0.84fr)
       minmax(94px, 0.72fr)
       68px
       minmax(68px, 0.48fr)
-      96px;
+      60px;
   }
 }
 
@@ -5100,19 +5156,28 @@ dialog::backdrop {
   }
 
   .leftRail,
-  .rightRail,
-  .centerRail {
+  .rightRail {
     position: static;
     grid-template-columns: 1fr;
     grid-template-rows: auto;
     height: auto;
     max-height: none;
-    overflow: visible;
+    overflow: auto;
+  }
+
+  .centerRail {
+    position: static;
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, auto) minmax(0, 1fr);
+    height: 100%;
+    max-height: 100%;
+    overflow: hidden;
   }
 
   .libraryOverviewStack {
-    max-height: none;
-    overflow: visible;
+    max-height: clamp(180px, 24dvh, 280px);
+    overflow-x: hidden;
+    overflow-y: auto;
   }
 }
 
