@@ -307,6 +307,12 @@ const labels = {
     openProjectRow: "Open details",
     openProjectRowHint: "Click row or project name to open details",
     projectActionFailed: "Update failed. Please try again.",
+    onlineUsers: "Online now",
+    onlineNone: "Only you online",
+    onlineOthers: "{count} other online",
+    projectDetailLoading: "Loading BP details...",
+    projectDetailLoadingHint: "Opening project #{id}.",
+    projectDetailLoadFailed: "Unable to load BP details. Please try again.",
     teamPresence: "Team status",
     commentsQuestions: "Comments & Questions",
     addComment: "Add comment",
@@ -693,6 +699,12 @@ const labels = {
     openProjectRow: "打开详情",
     openProjectRowHint: "点击行或项目名打开详情",
     projectActionFailed: "更新失败，请重试。",
+    onlineUsers: "当前在线",
+    onlineNone: "仅你在线",
+    onlineOthers: "还有 {count} 人在线",
+    projectDetailLoading: "正在加载 BP 详情...",
+    projectDetailLoadingHint: "正在打开项目 #{id}。",
+    projectDetailLoadFailed: "BP 详情加载失败，请重试。",
     teamPresence: "团队状态",
     commentsQuestions: "评论与问题",
     addComment: "添加评论",
@@ -799,6 +811,7 @@ let activeWeightProfileId = Number(localStorage.getItem("bp-weight-profile-id") 
 let selectedDocumentId = 0;
 let selectedProject = null;
 let analysisRequestSeq = 0;
+let projectDetailRequestSeq = 0;
 let reviewBoard = null;
 let leaderboardLoadState = "idle";
 let scoringProfile = null;
@@ -974,6 +987,7 @@ const loginError = document.querySelector("#loginError");
 const loginSubmitButton = loginForm?.querySelector("button[type='submit']");
 const welcomeMessage = document.querySelector("#welcomeMessage");
 const currentUserBadge = document.querySelector("#currentUserBadge");
+const onlineUsersChip = document.querySelector("#onlineUsers");
 const personalUserMirror = document.querySelector("#personalUserMirror");
 const projectCountMirror = document.querySelector("#projectCountMirror");
 const loginMemberAvatars = document.querySelector("#loginMemberAvatars");
@@ -1031,6 +1045,10 @@ const scoringProfileCloseButton = document.querySelector("#scoringProfileCloseBu
 const vrtAgentTargets = Array.from(document.querySelectorAll(".agentAvatar, .aiPanel"));
 let vrtAgentWorkingCount = 0;
 let pendingSwitchUser = "";
+let onlineUsers = [];
+let presenceHeartbeatTimer = 0;
+let presenceRefreshTimer = 0;
+const PRESENCE_HEARTBEAT_INTERVAL_MS = 60_000;
 
 function syncVrtAgentState() {
   const isWorking = vrtAgentWorkingCount > 0;
@@ -1214,6 +1232,7 @@ loginForm.addEventListener("submit", async (event) => {
   loginError.textContent = "";
   hasUserConfirmedEntry = true;
   renderWelcome();
+  startPresence();
   hideLoginOverlayAfterConfirmedEntry();
   await refreshWorkspaceForCurrentUser();
 });
@@ -1275,6 +1294,7 @@ function applyLanguage() {
   renderLoginMemberAvatars();
   renderLoginPrompt();
   renderWelcome();
+  renderOnlineUsers();
   renderFactorBuilder();
   renderProfileBoard();
   renderActiveProfileLabel();
@@ -1371,6 +1391,8 @@ function renderWelcome() {
   if (!welcomeMessage || !currentUser) {
     if (welcomeMessage) welcomeMessage.textContent = "";
     if (currentUserBadge) currentUserBadge.hidden = true;
+    onlineUsers = [];
+    renderOnlineUsers();
     if (personalUserMirror) {
       personalUserMirror.innerHTML = "";
       personalUserMirror.removeAttribute("title");
@@ -1396,6 +1418,81 @@ function renderWelcome() {
     personalUserMirror.removeAttribute("title");
     personalUserMirror.removeAttribute("aria-label");
   }
+}
+
+function renderOnlineUsers() {
+  if (!onlineUsersChip) return;
+  if (!hasUserConfirmedEntry || !currentUser) {
+    onlineUsersChip.hidden = true;
+    onlineUsersChip.innerHTML = "";
+    return;
+  }
+  const onlineByUser = new Map((onlineUsers || []).map((item) => [item.user_name, item]));
+  const others = sortTeamActors((onlineUsers || []).filter((item) => item.user_name !== currentUser).map((item) => item.user_name));
+  const label = others.length
+    ? t("onlineOthers").replace("{count}", String(others.length))
+    : t("onlineNone");
+  const title = others.length
+    ? `${t("onlineUsers")}: ${others.map(userDisplayName).join(", ")}`
+    : `${t("onlineUsers")}: ${userDisplayName(currentUser)}`;
+  onlineUsersChip.hidden = false;
+  onlineUsersChip.title = title;
+  onlineUsersChip.setAttribute("aria-label", title);
+  onlineUsersChip.innerHTML = `
+    <span class="onlineDot" aria-hidden="true"></span>
+    <strong>${escapeHtml(label)}</strong>
+    <span class="onlineAvatarStack" aria-hidden="true">
+      ${others.slice(0, 4).map((name) => renderAvatar(name, "tiny", onlineByUser.get(name))).join("") || renderAvatar(currentUser, "tiny", onlineByUser.get(currentUser))}
+    </span>
+  `;
+}
+
+function startPresence() {
+  stopPresence();
+  renderOnlineUsers();
+  sendPresenceHeartbeat();
+  loadOnlineUsers();
+  presenceHeartbeatTimer = window.setInterval(sendPresenceHeartbeat, PRESENCE_HEARTBEAT_INTERVAL_MS);
+  presenceRefreshTimer = window.setInterval(loadOnlineUsers, PRESENCE_HEARTBEAT_INTERVAL_MS);
+}
+
+function stopPresence() {
+  window.clearInterval(presenceHeartbeatTimer);
+  window.clearInterval(presenceRefreshTimer);
+  presenceHeartbeatTimer = 0;
+  presenceRefreshTimer = 0;
+  onlineUsers = [];
+  renderOnlineUsers();
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) return;
+  sendPresenceHeartbeat();
+  loadOnlineUsers();
+});
+
+async function sendPresenceHeartbeat() {
+  if (!hasUserConfirmedEntry || !currentUser || document.hidden) return;
+  await fetch("/api/presence/heartbeat", {
+    method: "POST",
+    headers: { ...authHeaders(), "content-type": "application/json" },
+    body: JSON.stringify({
+      last_page: selectedDocumentId ? "project_detail" : "bp_list",
+      document_id: selectedDocumentId || 0,
+      metadata: clientMetadata(),
+    }),
+  }).catch(() => null);
+}
+
+async function loadOnlineUsers() {
+  if (!hasUserConfirmedEntry || !currentUser) return;
+  const response = await fetch("/api/presence/online", {
+    headers: authHeaders(),
+  }).catch(() => null);
+  if (!response?.ok) return;
+  const data = await response.json().catch(() => ({}));
+  onlineUsers = Array.isArray(data.users) ? data.users : [];
+  renderOnlineUsers();
 }
 
 async function refreshWorkspaceForCurrentUser() {
@@ -1445,6 +1542,7 @@ function clearSessionOnly() {
   hasUserConfirmedEntry = false;
   sessionToken = "";
   sessionStorage.removeItem("bp-screener-session-token");
+  stopPresence();
 }
 
 function migrateAuthState() {
@@ -1612,6 +1710,7 @@ async function confirmUserSwitch() {
   if (userSelect) userSelect.value = currentUser;
   renderLoginMemberAvatars();
   renderWelcome();
+  startPresence();
   closeUserSwitchDialog();
   await refreshWorkspaceForCurrentUser();
 }
@@ -3970,7 +4069,7 @@ function renderProjects(items) {
   grid.querySelectorAll("[data-project-expand]").forEach((button) => {
     button.addEventListener("click", (event) => {
       event.stopPropagation();
-      toggleProjectRowDetails(button);
+      showProject(button.dataset.projectExpand);
     });
   });
   grid.querySelectorAll("[data-project-row]").forEach((row) => {
@@ -4154,7 +4253,7 @@ function projectRow(project) {
         <strong title="${escapeHtml(`${t("recommendation")}: ${recommendation}`)}">${escapeHtml(riskLevel)}</strong>
       </div>
       <div class="rowActions" data-label="${escapeHtml(t("actions"))}">
-        <button type="button" class="secondary projectExpandButton" data-project-expand="${project.document_id}" aria-expanded="${isExpanded ? "true" : "false"}" aria-controls="${escapeHtml(rowDetailsId)}" ${buttonAttrs(t("profileDetails"))}>${iconLabel("chevronRight", t("profileDetails"))}</button>
+        <button type="button" class="secondary projectExpandButton" data-project-expand="${project.document_id}" ${buttonAttrs(rowOpenLabel)}>${iconLabel("chevronRight", t("openProjectRow"))}</button>
         ${renderProjectHighlightButton(project.ops, project.document_id)}
       </div>
       <div id="${escapeHtml(rowDetailsId)}" class="projectRowDetails" ${isExpanded ? "" : "hidden"}>
@@ -4220,13 +4319,61 @@ function toggleProjectRowDetails(button) {
   }
 }
 
+function renderProjectDetailLoading(documentId) {
+  if (detail) {
+    detail.innerHTML = `
+      <div class="projectLoadingState detailLoadingState" role="status" aria-live="polite">
+        <span class="projectLoadingSpinner" aria-hidden="true"></span>
+        <div>
+          <strong>${escapeHtml(t("projectDetailLoading"))}</strong>
+          <p>${escapeHtml(t("projectDetailLoadingHint").replace("{id}", String(documentId || "")))}</p>
+        </div>
+      </div>
+    `;
+  }
+  if (teamPresence) teamPresence.innerHTML = "";
+  if (teamViewSummary) teamViewSummary.innerHTML = "";
+  if (contextList) contextList.innerHTML = `<p class="subtle">${escapeHtml(t("projectDetailLoading"))}</p>`;
+  if (projectOps) projectOps.innerHTML = `<p class="subtle">${escapeHtml(t("projectDetailLoading"))}</p>`;
+  if (scoreReviewCard) scoreReviewCard.innerHTML = "";
+  renderAiAnalysisCard(null, "loading");
+  renderBpPreview({});
+}
+
+function renderProjectDetailError(documentId, message = "") {
+  if (!detail) return;
+  detail.innerHTML = `
+    <div class="projectListErrorBlock detailErrorState" role="alert">
+      <strong>${escapeHtml(message || t("projectDetailLoadFailed"))}</strong>
+      <p>${escapeHtml(t("projectDetailLoadingHint").replace("{id}", String(documentId || "")))}</p>
+      <button type="button" class="secondary compactButton" data-project-detail-retry="${escapeHtml(String(documentId || ""))}">${escapeHtml(t("retry"))}</button>
+    </div>
+  `;
+  detail.querySelector("[data-project-detail-retry]")?.addEventListener("click", () => showProject(documentId));
+}
+
 async function showProject(documentId) {
-  const response = await apiFetch(`/api/projects/${documentId}?lang=${encodeURIComponent(lang)}&scoringTemplate=${encodeURIComponent(activeScoringTemplate)}`);
-  if (!response) return;
-  const data = await response.json();
-  const rankedProject = projects.find((item) => Number(item.document_id) === Number(documentId));
-  const project = { ...(rankedProject || {}), ...(data.project || {}) };
-  if (!project) return;
+  const numericDocumentId = Number(documentId || 0);
+  if (!numericDocumentId) return;
+  const requestId = ++projectDetailRequestSeq;
+  const rankedProject = projects.find((item) => Number(item.document_id) === numericDocumentId);
+  selectedDocumentId = numericDocumentId;
+  selectedProject = rankedProject || null;
+  renderScoringQueueSummary();
+  renderWeeklyNominationSpotlight(reviewBoard?.nominations || []);
+  openProjectDialog();
+  renderProjectDetailLoading(numericDocumentId);
+  sendPresenceHeartbeat();
+
+  let response = null;
+  try {
+    response = await apiFetch(`/api/projects/${numericDocumentId}?lang=${encodeURIComponent(lang)}&scoringTemplate=${encodeURIComponent(activeScoringTemplate)}`);
+    if (requestId !== projectDetailRequestSeq || Number(selectedDocumentId) !== numericDocumentId) return;
+    if (!response) throw new Error(t("projectDetailLoadFailed"));
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.error) throw new Error(data.error || t("projectDetailLoadFailed"));
+    const project = { ...(rankedProject || {}), ...(data.project || {}) };
+    if (!project?.document_id) throw new Error(t("projectDetailLoadFailed"));
   selectedDocumentId = Number(project.document_id || documentId);
   selectedProject = project;
   renderScoringQueueSummary();
@@ -4292,6 +4439,11 @@ async function showProject(documentId) {
   loadProjectAnalysis(selectedDocumentId);
   await loadProjectContext(selectedDocumentId);
   await loadSimilarProjects(selectedDocumentId);
+  } catch (error) {
+    if (requestId !== projectDetailRequestSeq || Number(selectedDocumentId) !== numericDocumentId) return;
+    selectedProject = rankedProject || null;
+    renderProjectDetailError(numericDocumentId, error?.message || t("projectDetailLoadFailed"));
+  }
 }
 
 async function loadProjectAnalysis(documentId) {
@@ -5387,6 +5539,7 @@ async function apiFetch(url, options = {}) {
     hasUserConfirmedEntry = false;
     currentUser = "";
     sessionToken = "";
+    stopPresence();
     loginOverlay.classList.remove("hidden");
     loginError.textContent = errorPayload.error || t("invalidAccessCode");
     triggerAuthError(loginForm, userSelect);

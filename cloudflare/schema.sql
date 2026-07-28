@@ -1,6 +1,7 @@
 DROP TABLE IF EXISTS chunks;
 DROP TABLE IF EXISTS project_translations;
 DROP TABLE IF EXISTS daily_activity;
+DROP TABLE IF EXISTS user_presence;
 DROP TABLE IF EXISTS meeting_events;
 DROP TABLE IF EXISTS nomination_votes;
 DROP TABLE IF EXISTS weekly_nominations;
@@ -350,6 +351,14 @@ CREATE TABLE daily_activity (
   PRIMARY KEY(day, actor, document_id, action)
 );
 
+CREATE TABLE user_presence (
+  user_name TEXT PRIMARY KEY,
+  last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_page TEXT NOT NULL DEFAULT '',
+  document_id INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX idx_projects_ai_related ON projects(ai_related);
 CREATE INDEX idx_projects_industry ON projects(industry);
 CREATE INDEX idx_projects_country ON projects(country_or_region);
@@ -387,3 +396,4 @@ CREATE INDEX idx_weekly_nominations_week ON weekly_nominations(week_start, creat
 CREATE INDEX idx_nomination_votes_vote ON nomination_votes(vote);
 CREATE INDEX idx_meeting_events_week_date ON meeting_events(week_start, event_date);
 CREATE INDEX idx_daily_activity_day_actor ON daily_activity(day, actor);
+CREATE INDEX idx_user_presence_last_seen ON user_presence(last_seen_at);

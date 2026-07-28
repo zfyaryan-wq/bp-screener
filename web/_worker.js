@@ -14,6 +14,16 @@ export default {
         sessionCookieHeaders(auth.sessionToken),
       );
     }
+    if (url.pathname === "/api/presence/heartbeat") {
+      const auth = await authenticateRequest(request, env);
+      if (auth.error) return auth.error;
+      return await presenceHeartbeat(request, env, auth.user);
+    }
+    if (url.pathname === "/api/presence/online") {
+      const auth = await authenticateRequest(request, env);
+      if (auth.error) return auth.error;
+      return await onlinePresence(request, env, auth.user);
+    }
     if (url.pathname === "/api/account/access-code") {
       return disabledAccessCodeResponse();
     }
@@ -346,6 +356,7 @@ async function proxyWorkbench(request, env) {
 
 const SESSION_TTL_SECONDS = 8 * 60 * 60;
 const DEFAULT_SESSION_SECRET = "bp-screener-team-session-v1";
+const PRESENCE_WINDOW_MINUTES = 5;
 
 async function authorizeApi(request, env) {
   const auth = await authenticateRequest(request, env);
@@ -2354,6 +2365,65 @@ async function dailyActivitySummary(env) {
   return result.results || [];
 }
 
+async function presenceHeartbeat(request, env, actor) {
+  if (request.method !== "POST") {
+    return json({ error: "Method not allowed." }, 405);
+  }
+  if (!TEAM_MEMBERS.includes(actor)) {
+    return json({ error: "Choose a valid team member." }, 401);
+  }
+  await ensurePresenceTables(env);
+  const body = await request.json().catch(() => ({}));
+  const lastPage = String(body.last_page || "").trim().slice(0, 120);
+  const documentId = Number(body.document_id || 0);
+  await env.DB.prepare(`
+    INSERT INTO user_presence(user_name, last_seen_at, last_page, document_id, updated_at)
+    VALUES (?, CURRENT_TIMESTAMP, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(user_name) DO UPDATE SET
+      last_seen_at = CURRENT_TIMESTAMP,
+      last_page = excluded.last_page,
+      document_id = excluded.document_id,
+      updated_at = CURRENT_TIMESTAMP
+  `).bind(actor, lastPage, Number.isFinite(documentId) && documentId > 0 ? documentId : 0).run();
+  return json({ ok: true, user: actor, window_minutes: PRESENCE_WINDOW_MINUTES });
+}
+
+async function onlinePresence(request, env, actor) {
+  if (request.method !== "GET") {
+    return json({ error: "Method not allowed." }, 405);
+  }
+  await ensurePresenceTables(env);
+  const result = await env.DB.prepare(`
+    SELECT user_name, last_seen_at, last_page, document_id
+    FROM user_presence
+    WHERE last_seen_at >= datetime('now', ?)
+    ORDER BY last_seen_at DESC
+  `).bind(`-${PRESENCE_WINDOW_MINUTES} minutes`).all();
+  const activeByUser = new Map((result.results || []).map((row) => [row.user_name, row]));
+  const users = TEAM_USER_META.map((member) => {
+    const row = activeByUser.get(member.name);
+    return {
+      user_name: member.name,
+      display_name: member.displayName,
+      initials: member.initials,
+      class_name: member.className,
+      colors: member.colors,
+      online: Boolean(row),
+      is_current: member.name === actor,
+      last_seen_at: row?.last_seen_at || "",
+      last_page: row?.last_page || "",
+      document_id: row?.document_id ? Number(row.document_id) : 0,
+    };
+  }).filter((member) => member.online);
+  users.sort((a, b) => compareTeamActors(a.user_name, b.user_name));
+  return json({
+    users,
+    others: users.filter((member) => !member.is_current),
+    current_user: actor,
+    window_minutes: PRESENCE_WINDOW_MINUTES,
+  });
+}
+
 async function bpLeaderboards(env, lang = "en") {
   const [topLiked, topDisliked, viewerCounts] = await Promise.all([
     reactionLeaderboard(env, "like", lang),
@@ -3603,6 +3673,19 @@ async function ensureReviewOpsTables(env) {
   await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_nomination_votes_vote ON nomination_votes(vote)").run();
   await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_meeting_events_week_date ON meeting_events(week_start, event_date)").run();
   await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_daily_activity_day_actor ON daily_activity(day, actor)").run();
+}
+
+async function ensurePresenceTables(env) {
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS user_presence (
+      user_name TEXT PRIMARY KEY,
+      last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      last_page TEXT NOT NULL DEFAULT '',
+      document_id INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_user_presence_last_seen ON user_presence(last_seen_at)").run();
 }
 
 async function searchSnippets(request, env) {

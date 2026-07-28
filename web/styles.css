@@ -1597,6 +1597,54 @@ button.secondary:hover {
   --avatar-font-size: 8px;
 }
 
+.onlineUsersChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 190px;
+  border: 1px solid rgba(52, 211, 153, 0.24);
+  border-radius: 999px;
+  padding: 6px 8px;
+  color: #bbf7d0;
+  background: rgba(2, 8, 8, 0.52);
+  box-shadow: inset 0 0 0 1px rgba(2, 8, 8, 0.36);
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.onlineUsersChip[hidden] {
+  display: none;
+}
+
+.onlineUsersChip strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.onlineDot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.78);
+}
+
+.onlineAvatarStack {
+  display: inline-flex;
+  min-width: 20px;
+}
+
+.onlineAvatarStack .avatar {
+  margin-left: -6px;
+}
+
+.onlineAvatarStack .avatar:first-child {
+  margin-left: 0;
+}
+
 .stats {
   display: grid;
   grid-template-columns: minmax(92px, 1fr);
